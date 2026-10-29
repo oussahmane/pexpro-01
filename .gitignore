@@ -1,0 +1,13 @@
+bin/
+obj/
+.vs/
+*.user
+TestResults/
+
+config/dev/local.env
+
+apps/desktop/node_modules/
+apps/desktop/dist/
+apps/desktop/src-tauri/target/
+apps/desktop/.env.local
+apps/desktop/.env.*.local

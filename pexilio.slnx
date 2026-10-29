@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Pexilio.Api/Pexilio.Api.csproj" />
+    <Project Path="src/Pexilio.Application/Pexilio.Application.csproj" />
+    <Project Path="src/Pexilio.Domain/Pexilio.Domain.csproj" />
+    <Project Path="src/Pexilio.Infrastructure/Pexilio.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Pexilio.Api.IntegrationTests/Pexilio.Api.IntegrationTests.csproj" />
+    <Project Path="tests/Pexilio.Domain.Tests/Pexilio.Domain.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -76,3 +76,39 @@ public interface IStockService
         MinimumStockRequest request,
         CancellationToken cancellationToken);
 }
+
+public interface IPurchasingService
+{
+    Task<Result<IReadOnlyList<SupplierResponse>>> ListSuppliersAsync(CancellationToken cancellationToken);
+
+    Task<Result<SupplierResponse>> GetSupplierAsync(Guid id, CancellationToken cancellationToken);
+
+    Task<Result<SupplierResponse>> CreateSupplierAsync(
+        SupplierRequest request,
+        Guid idempotencyKey,
+        CancellationToken cancellationToken);
+
+    Task<Result<SupplierResponse>> UpdateSupplierAsync(
+        Guid id,
+        SupplierRequest request,
+        CancellationToken cancellationToken);
+
+    Task<Result<IReadOnlyList<PurchaseSummaryResponse>>> ListPurchasesAsync(
+        string? status,
+        CancellationToken cancellationToken);
+
+    Task<Result<PurchaseResponse>> GetPurchaseAsync(Guid id, CancellationToken cancellationToken);
+
+    Task<Result<PurchaseResponse>> CreatePurchaseAsync(
+        PurchaseDraftRequest request,
+        Guid idempotencyKey,
+        Guid userId,
+        CancellationToken cancellationToken);
+
+    Task<Result<PurchaseResponse>> UpdatePurchaseAsync(
+        Guid id,
+        PurchaseDraftRequest request,
+        CancellationToken cancellationToken);
+
+    Task<Result<Guid>> DeletePurchaseAsync(Guid id, uint? version, CancellationToken cancellationToken);
+}

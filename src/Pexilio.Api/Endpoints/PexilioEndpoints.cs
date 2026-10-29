@@ -100,7 +100,66 @@ public static class PexilioEndpoints
             ToResult(await stock.SetMinimumAsync(productId, request, cancellationToken), Results.Ok))
             .RequireAuthorization("stock.adjust");
 
+        app.MapGet("/api/v1/suppliers", async (IPurchasingService purchasing, CancellationToken cancellationToken) =>
+            ToResult(await purchasing.ListSuppliersAsync(cancellationToken), Results.Ok))
+            .RequireAuthorization("purchases.read");
+
+        app.MapGet("/api/v1/suppliers/{id:guid}", async (Guid id, IPurchasingService purchasing, CancellationToken cancellationToken) =>
+            ToResult(await purchasing.GetSupplierAsync(id, cancellationToken), Results.Ok))
+            .RequireAuthorization("purchases.read");
+
+        app.MapPost("/api/v1/suppliers", async (SupplierRequest request, HttpRequest http, IPurchasingService purchasing, CancellationToken cancellationToken) =>
+            await PostIdempotentAsync(http, key => purchasing.CreateSupplierAsync(request, key, cancellationToken), created => $"/api/v1/suppliers/{created.Id}"))
+            .RequireAuthorization("purchases.write");
+
+        app.MapPut("/api/v1/suppliers/{id:guid}", async (Guid id, SupplierRequest request, IPurchasingService purchasing, CancellationToken cancellationToken) =>
+            ToResult(await purchasing.UpdateSupplierAsync(id, request, cancellationToken), Results.Ok))
+            .RequireAuthorization("purchases.write");
+
+        app.MapGet("/api/v1/purchases", async (string? status, IPurchasingService purchasing, CancellationToken cancellationToken) =>
+            ToResult(await purchasing.ListPurchasesAsync(status, cancellationToken), Results.Ok))
+            .RequireAuthorization("purchases.read");
+
+        app.MapGet("/api/v1/purchases/{id:guid}", async (Guid id, IPurchasingService purchasing, CancellationToken cancellationToken) =>
+            ToResult(await purchasing.GetPurchaseAsync(id, cancellationToken), Results.Ok))
+            .RequireAuthorization("purchases.read");
+
+        app.MapPost("/api/v1/purchases", async (PurchaseDraftRequest request, HttpRequest http, ClaimsPrincipal user, IPurchasingService purchasing, CancellationToken cancellationToken) =>
+        {
+            if (!TryUserId(user, out var userId))
+            {
+                return Problem(401, ErrorCodes.AuthenticationRequired);
+            }
+
+            return await PostIdempotentAsync(
+                http,
+                key => purchasing.CreatePurchaseAsync(request, key, userId, cancellationToken),
+                created => $"/api/v1/purchases/{created.Id}");
+        }).RequireAuthorization("purchases.write");
+
+        app.MapPut("/api/v1/purchases/{id:guid}", async (Guid id, PurchaseDraftRequest request, IPurchasingService purchasing, CancellationToken cancellationToken) =>
+            ToResult(await purchasing.UpdatePurchaseAsync(id, request, cancellationToken), Results.Ok))
+            .RequireAuthorization("purchases.write");
+
+        app.MapDelete("/api/v1/purchases/{id:guid}", async (Guid id, uint? version, IPurchasingService purchasing, CancellationToken cancellationToken) =>
+            ToResult(await purchasing.DeletePurchaseAsync(id, version, cancellationToken), _ => Results.NoContent()))
+            .RequireAuthorization("purchases.write");
+
         return app;
+    }
+
+    private static async Task<IResult> PostIdempotentAsync<T>(
+        HttpRequest http,
+        Func<Guid, Task<Result<T>>> post,
+        Func<T, string> location)
+    {
+        if (!TryIdempotencyKey(http, out var key, out var error))
+        {
+            return error;
+        }
+
+        var result = await post(key);
+        return ToResult(result, created => Results.Created(location(created), created));
     }
 
     private static async Task<IResult> PostStockAsync(
@@ -140,6 +199,12 @@ public static class PexilioEndpoints
         if (!Guid.TryParse(values.ToString(), out key))
         {
             error = Problem(400, ErrorCodes.ValidationFailed, [new FieldError("idempotencyKey", "idempotencyKey.invalid")]);
+            return false;
+        }
+
+        if (key == Guid.Empty)
+        {
+            error = Problem(400, ErrorCodes.ValidationFailed, [new FieldError("idempotencyKey", "idempotencyKey.empty")]);
             return false;
         }
 

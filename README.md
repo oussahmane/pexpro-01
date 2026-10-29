@@ -1,6 +1,6 @@
 # Pexilio
 
-Phase 3 adds a stock ledger on top of company setup, sign-in, categories, and products. It does not include purchasing, sales, returns, transfers, a multi-location screen, licensing, or a Windows installer.
+Phase 4 starts with suppliers and purchase drafts on top of company setup, sign-in, categories, products, and the stock ledger. Saving a draft does not change stock. Receiving, sales, returns, invoicing, supplier payments, transfers, a multi-location screen, licensing, and a Windows installer are not included.
 
 Run the commands from the repository root on Arch Linux. French is the default language. The window also offers Arabic, with a right-to-left layout, and English.
 
@@ -76,6 +76,8 @@ That returns `{"complete":false}` until the company and administrator are create
 `20261028161707_Catalog` adds `category` and `product`. A category may name a parent, and the API rejects a cycle. A product stores its SKU, unit, `numeric(19,4)` unit price, tax-rate reference, active flag, and whether stock is tracked. Prices travel as JSON strings with four decimal places. SKU uniqueness is case-insensitive.
 
 `20261028191901_Stock` adds `stock_location`, `stock_balance`, `stock_movement`, and `stock_idempotency`. It does not insert quantities. The movement table is append-only: database triggers reject update, delete, and truncate, including for the table owner. A normal stock change writes the movement and the balance in one transaction. A deferred trigger rejects a commit whose stored balance does not equal the sum of that product's signed deltas. Quantities are `numeric(19,4)`. The API accepts decimal strings and rejects more than four decimal places instead of rounding them. One default location, `MAIN` / `Principal`, is created on the first stock read or adjustment. A minimum quantity warns when on-hand is strictly below it; equality is reported separately and neither value blocks a stock change.
+
+`20261029140146_PurchasingDrafts` adds `supplier`, `purchase`, `purchase_line`, `purchase_idempotency`, and `purchase_number_seq` in schema `pexilio`. It does not insert suppliers or purchases, and it does not update `stock_movement` or `stock_balance`. Purchase quantities and unit costs are `numeric(19,4)`. The purchase number sequence is not rolled back, so a failed create can leave a gap. This migration is applied to `pexilio_test` only. `pexilio_dev` has not been migrated. Do not run `scripts/dev/migrate.sh` for this migration until applying it to `pexilio_dev` has been approved.
 
 `PEXILIO_CONNECTION` selects `pexilio_dev`. `PEXILIO_TEST_CONNECTION` selects `pexilio_test`. Both use the role `pexilio_dev` on `127.0.0.1:5432`. The API and `migrate.sh` use the development database. Integration tests use the test database. They refuse a connection whose database is not `pexilio_test` or whose host is not loopback, and they read `current_database()` before migrating or deleting rows.
 

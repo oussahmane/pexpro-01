@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Pexilio.Domain.Catalog;
 using Pexilio.Domain.Company;
+using Pexilio.Domain.Purchasing;
 using Pexilio.Domain.Stock;
 using Pexilio.Infrastructure.Auth;
 using Pexilio.Infrastructure.Identity;
@@ -30,10 +31,19 @@ public sealed class PexilioDbContext(DbContextOptions<PexilioDbContext> options)
 
     public DbSet<StockIdempotency> StockIdempotencies => Set<StockIdempotency>();
 
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
+
+    public DbSet<Purchase> Purchases => Set<Purchase>();
+
+    public DbSet<PurchaseLine> PurchaseLines => Set<PurchaseLine>();
+
+    public DbSet<PurchaseIdempotency> PurchaseIdempotencies => Set<PurchaseIdempotency>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
         modelBuilder.HasDefaultSchema("pexilio");
+        modelBuilder.HasSequence<long>("purchase_number_seq", "pexilio");
         modelBuilder.Entity<AppUser>().ToTable("AspNetUsers", "pexilio");
         modelBuilder.Entity<AppRole>().ToTable("AspNetRoles", "pexilio");
         modelBuilder.Entity<IdentityUserRole<Guid>>().ToTable("AspNetUserRoles", "pexilio");

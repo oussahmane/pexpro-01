@@ -136,6 +136,92 @@ public sealed record StockMovementResponse(
     DateTimeOffset CreatedAt,
     Guid CreatedBy);
 
+public sealed class SupplierRequest
+{
+    public string? Name { get; set; }
+
+    public string? ContactName { get; set; }
+
+    public string? Phone { get; set; }
+
+    public string? Email { get; set; }
+
+    public string? Address { get; set; }
+
+    public string? TaxId { get; set; }
+
+    public string? Notes { get; set; }
+
+    public bool? IsActive { get; set; }
+}
+
+public sealed record SupplierResponse(
+    Guid Id,
+    string Name,
+    string? ContactName,
+    string? Phone,
+    string? Email,
+    string? Address,
+    string? TaxId,
+    string? Notes,
+    bool IsActive);
+
+public sealed class PurchaseLineRequest
+{
+    public Guid ProductId { get; set; }
+
+    public string? Quantity { get; set; }
+
+    public string? UnitCost { get; set; }
+}
+
+public sealed class PurchaseDraftRequest
+{
+    public Guid SupplierId { get; set; }
+
+    public string? SupplierDocumentRef { get; set; }
+
+    public string? Notes { get; set; }
+
+    public uint? Version { get; set; }
+
+    public List<PurchaseLineRequest>? Lines { get; set; }
+}
+
+public sealed record PurchaseLineResponse(
+    Guid Id,
+    int LineNumber,
+    Guid ProductId,
+    string ProductSku,
+    string ProductName,
+    string ProductUnit,
+    string QuantityOrdered,
+    string QuantityReceived,
+    string UnitCost,
+    string SellingPrice);
+
+public sealed record PurchaseSummaryResponse(
+    Guid Id,
+    string Number,
+    string Status,
+    Guid SupplierId,
+    string SupplierName,
+    string? SupplierDocumentRef,
+    DateTimeOffset CreatedAt);
+
+public sealed record PurchaseResponse(
+    Guid Id,
+    string Number,
+    string Status,
+    Guid SupplierId,
+    string SupplierName,
+    string? SupplierTaxId,
+    string? SupplierDocumentRef,
+    string? Notes,
+    uint Version,
+    DateTimeOffset CreatedAt,
+    IReadOnlyList<PurchaseLineResponse> Lines);
+
 public sealed record CompanyResponse(
     Guid Id,
     string LegalName,

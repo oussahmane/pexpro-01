@@ -73,7 +73,7 @@ describe("App", () => {
       if (url.endsWith("/api/v1/categories")) {
         return json([]);
       }
-      if (url.includes("/api/v1/stock/")) {
+      if (url.includes("/api/v1/stock/") || url.includes("/api/v1/suppliers") || url.includes("/api/v1/purchases")) {
         return json([]);
       }
       throw new Error(url);
@@ -133,7 +133,7 @@ describe("App", () => {
       if (url.endsWith("/api/v1/categories")) {
         return json([]);
       }
-      if (url.includes("/api/v1/stock/")) {
+      if (url.includes("/api/v1/stock/") || url.includes("/api/v1/suppliers") || url.includes("/api/v1/purchases")) {
         return json([]);
       }
       throw new Error(url);
@@ -177,7 +177,12 @@ describe("App", () => {
       if (url.endsWith("/api/v1/company")) {
         return json({ legalName: "Pexilio Démo" });
       }
-      if (url.endsWith("/api/v1/products") || url.endsWith("/api/v1/categories")) {
+      if (
+        url.endsWith("/api/v1/products") ||
+        url.endsWith("/api/v1/categories") ||
+        url.includes("/api/v1/suppliers") ||
+        url.includes("/api/v1/purchases")
+      ) {
         return json([]);
       }
       if (url.includes("/api/v1/stock/movements")) {
@@ -239,7 +244,9 @@ describe("App", () => {
         url.endsWith("/api/v1/products") ||
         url.endsWith("/api/v1/categories") ||
         url.endsWith("/api/v1/stock/balances") ||
-        url.includes("/api/v1/stock/movements")
+        url.includes("/api/v1/stock/movements") ||
+        url.includes("/api/v1/suppliers") ||
+        url.includes("/api/v1/purchases")
       ) {
         return json([]);
       }
@@ -252,9 +259,11 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "دخول" }));
 
     expect(await screen.findByRole("heading", { name: "المخزون" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "المشتريات" })).toBeInTheDocument();
     expect(document.documentElement.lang).toBe("ar");
     expect(document.documentElement.dir).toBe("rtl");
     expect(screen.queryByRole("button", { name: "تسجيل الحركة" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "حفظ المسودة" })).not.toBeInTheDocument();
   });
 });
 

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { CatalogPanel } from "./CatalogPanel";
+import { PurchasingPanel } from "./PurchasingPanel";
 import { StockPanel } from "./StockPanel";
 import { HealthPanel } from "./HealthPanel";
 import { direction, translate, type Locale } from "./i18n";
@@ -244,6 +245,12 @@ export default function App({
               locale={locale}
             />
             <StockPanel
+              apiBaseUrl={apiBaseUrl}
+              accessToken={session.accessToken}
+              fetcher={fetcher}
+              locale={locale}
+            />
+            <PurchasingPanel
               apiBaseUrl={apiBaseUrl}
               accessToken={session.accessToken}
               fetcher={fetcher}

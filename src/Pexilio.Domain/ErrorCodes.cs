@@ -22,6 +22,15 @@ public static class ErrorCodes
     public const string StockOpeningExists = "stock.opening_exists";
     public const string StockIdempotencyConflict = "stock.idempotency_conflict";
     public const string StockReconciliation = "stock.reconciliation";
+    public const string SupplierNotFound = "suppliers.not_found";
+    public const string SupplierNameTaken = "suppliers.name_taken";
+    public const string SupplierInactive = "suppliers.inactive";
+    public const string PurchaseNotFound = "purchases.not_found";
+    public const string PurchaseNotDraft = "purchase.not_draft";
+    public const string PurchaseConflict = "purchase.conflict";
+    public const string PurchaseIdempotencyConflict = "purchase.idempotency_conflict";
+    public const string PurchaseProductInactive = "purchase.product_inactive";
+    public const string PurchaseSupplierDocumentTaken = "purchase.supplier_document_taken";
 }
 
 public sealed record FieldError(string Field, string Code);

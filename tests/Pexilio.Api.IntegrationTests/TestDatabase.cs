@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 using Pexilio.Domain.Catalog;
 using Pexilio.Domain.Company;
+using Pexilio.Domain.Purchasing;
 using Pexilio.Domain.Stock;
 using Pexilio.Infrastructure.Auth;
 using Pexilio.Infrastructure.Identity;
@@ -37,6 +38,10 @@ internal static class TestDatabase
             throw new InvalidOperationException($"Refusing to delete rows from database '{name}'.");
         }
 
+        await database.Set<PurchaseIdempotency>().ExecuteDeleteAsync();
+        await database.Set<PurchaseLine>().ExecuteDeleteAsync();
+        await database.Set<Purchase>().ExecuteDeleteAsync();
+        await database.Set<Supplier>().ExecuteDeleteAsync();
         await database.Set<StockIdempotency>().ExecuteDeleteAsync();
         await using (var purge = await database.Database.BeginTransactionAsync())
         {

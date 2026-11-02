@@ -1,4 +1,5 @@
 using Pexilio.Domain.Company;
+using Pexilio.Domain.Stock;
 
 namespace Pexilio.Application;
 
@@ -75,6 +76,18 @@ public interface IStockService
         Guid productId,
         MinimumStockRequest request,
         CancellationToken cancellationToken);
+
+    Task<Result<StockMovement>> PostInCurrentTransactionAsync(
+        string movementType,
+        Guid productId,
+        decimal quantity,
+        string reason,
+        decimal? unitCost,
+        Guid userId,
+        string sourceType,
+        Guid? sourceId,
+        CancellationToken cancellationToken,
+        Guid? movementId = null);
 }
 
 public interface IPurchasingService
@@ -111,4 +124,74 @@ public interface IPurchasingService
         CancellationToken cancellationToken);
 
     Task<Result<Guid>> DeletePurchaseAsync(Guid id, uint? version, CancellationToken cancellationToken);
+
+    Task<Result<PurchaseResponse>> OrderPurchaseAsync(
+        Guid id,
+        PurchaseVersionRequest request,
+        Guid idempotencyKey,
+        CancellationToken cancellationToken);
+
+    Task<Result<PurchaseReceiptResponse>> ReceivePurchaseAsync(
+        Guid id,
+        PurchaseReceiptRequest request,
+        Guid idempotencyKey,
+        Guid userId,
+        CancellationToken cancellationToken);
+
+    Task<Result<PurchaseResponse>> CancelPurchaseAsync(
+        Guid id,
+        PurchaseVersionRequest request,
+        Guid idempotencyKey,
+        CancellationToken cancellationToken);
+}
+
+public interface ICustomerService
+{
+    Task<Result<IReadOnlyList<CustomerResponse>>> ListAsync(string? query, CancellationToken cancellationToken);
+
+    Task<Result<CustomerResponse>> GetAsync(Guid id, CancellationToken cancellationToken);
+
+    Task<Result<CustomerStatementResponse>> GetStatementAsync(
+        Guid id,
+        string? from,
+        string? to,
+        CancellationToken cancellationToken);
+
+    Task<Result<CustomerResponse>> CreateAsync(
+        CustomerRequest request,
+        Guid idempotencyKey,
+        bool administrator,
+        CancellationToken cancellationToken);
+
+    Task<Result<CustomerResponse>> UpdateAsync(
+        Guid id,
+        CustomerRequest request,
+        bool administrator,
+        CancellationToken cancellationToken);
+}
+
+public interface ISalesService
+{
+    Task<Result<IReadOnlyList<SaleSummaryResponse>>> ListAsync(CancellationToken cancellationToken);
+
+    Task<Result<SaleResponse>> GetAsync(Guid id, CancellationToken cancellationToken);
+
+    Task<Result<SaleResponse>> FinalizeCashSaleAsync(
+        SaleFinalizeRequest request,
+        Guid idempotencyKey,
+        Guid userId,
+        bool administrator,
+        CancellationToken cancellationToken);
+
+    Task<Result<SalePaymentPostResponse>> AddPaymentAsync(
+        Guid saleId,
+        SalePaymentPostRequest request,
+        Guid idempotencyKey,
+        Guid userId,
+        CancellationToken cancellationToken);
+}
+
+public interface ISaleProductLock
+{
+    ValueTask AfterProductLockAsync(CancellationToken cancellationToken);
 }

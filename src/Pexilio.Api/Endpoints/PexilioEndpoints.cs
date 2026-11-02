@@ -1,8 +1,10 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Policy;
+using Microsoft.Extensions.Logging;
 using Pexilio.Application;
 using Pexilio.Domain;
+using Pexilio.Domain.Accounts;
 using Pexilio.Domain.Company;
 
 namespace Pexilio.Api.Endpoints;
@@ -145,7 +147,122 @@ public static class PexilioEndpoints
             ToResult(await purchasing.DeletePurchaseAsync(id, version, cancellationToken), _ => Results.NoContent()))
             .RequireAuthorization("purchases.write");
 
+        app.MapPost("/api/v1/purchases/{id:guid}/order", async (Guid id, PurchaseVersionRequest request, HttpRequest http, IPurchasingService purchasing, CancellationToken cancellationToken) =>
+            await PostIdempotentOkAsync(http, key => purchasing.OrderPurchaseAsync(id, request, key, cancellationToken)))
+            .RequireAuthorization("purchases.write");
+
+        app.MapPost("/api/v1/purchases/{id:guid}/receipts", async (Guid id, PurchaseReceiptRequest request, HttpRequest http, ClaimsPrincipal user, IPurchasingService purchasing, CancellationToken cancellationToken) =>
+        {
+            if (!TryUserId(user, out var userId))
+            {
+                return Problem(401, ErrorCodes.AuthenticationRequired);
+            }
+
+            return await PostIdempotentAsync(
+                http,
+                key => purchasing.ReceivePurchaseAsync(id, request, key, userId, cancellationToken),
+                created => $"/api/v1/purchases/{id}/receipts/{created.Id}");
+        }).RequireAuthorization("purchases.write");
+
+        app.MapPost("/api/v1/purchases/{id:guid}/cancel", async (Guid id, PurchaseVersionRequest request, HttpRequest http, IPurchasingService purchasing, CancellationToken cancellationToken) =>
+            await PostIdempotentOkAsync(http, key => purchasing.CancelPurchaseAsync(id, request, key, cancellationToken)))
+            .RequireAuthorization("purchases.write");
+
+        app.MapGet("/api/v1/customers", async (string? q, ICustomerService customers, CancellationToken cancellationToken) =>
+            ToResult(await customers.ListAsync(q, cancellationToken), Results.Ok))
+            .RequireAuthorization("customers.read");
+
+        app.MapGet("/api/v1/customers/{id:guid}", async (Guid id, ICustomerService customers, CancellationToken cancellationToken) =>
+            ToResult(await customers.GetAsync(id, cancellationToken), Results.Ok))
+            .RequireAuthorization("customers.read");
+
+        app.MapGet("/api/v1/customers/{id:guid}/statement", async (
+            Guid id,
+            string? from,
+            string? to,
+            ICustomerService customers,
+            CancellationToken cancellationToken) =>
+            ToResult(await customers.GetStatementAsync(id, from, to, cancellationToken), Results.Ok))
+            .RequireAuthorization("customers.read");
+
+        app.MapPost("/api/v1/customers", async (CustomerRequest request, HttpRequest http, ClaimsPrincipal user, ICustomerService customers, CancellationToken cancellationToken) =>
+            await PostIdempotentAsync(
+                http,
+                key => customers.CreateAsync(request, key, user.IsInRole(RoleNames.Administrator), cancellationToken),
+                created => $"/api/v1/customers/{created.Id}"))
+            .RequireAuthorization("customers.write");
+
+        app.MapPut("/api/v1/customers/{id:guid}", async (Guid id, CustomerRequest request, ClaimsPrincipal user, ICustomerService customers, CancellationToken cancellationToken) =>
+            ToResult(await customers.UpdateAsync(id, request, user.IsInRole(RoleNames.Administrator), cancellationToken), Results.Ok))
+            .RequireAuthorization("customers.write");
+
+        app.MapGet("/api/v1/sales", async (ISalesService sales, CancellationToken cancellationToken) =>
+            ToResult(await sales.ListAsync(cancellationToken), Results.Ok))
+            .RequireAuthorization("sales.read");
+
+        app.MapGet("/api/v1/sales/{id:guid}", async (Guid id, ISalesService sales, CancellationToken cancellationToken) =>
+            ToResult(await sales.GetAsync(id, cancellationToken), Results.Ok))
+            .RequireAuthorization("sales.read");
+
+        app.MapPost("/api/v1/sales", async (
+            SaleFinalizeRequest request,
+            HttpRequest http,
+            ClaimsPrincipal user,
+            ISalesService sales,
+            ILoggerFactory loggerFactory,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryUserId(user, out var userId))
+            {
+                return Problem(401, ErrorCodes.AuthenticationRequired);
+            }
+
+            try
+            {
+                return await PostIdempotentAsync(
+                    http,
+                    key => sales.FinalizeCashSaleAsync(request, key, userId, user.IsInRole(RoleNames.Administrator), cancellationToken),
+                    created => $"/api/v1/sales/{created.Id}");
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                loggerFactory.CreateLogger("Pexilio.Api.Sales").LogError(exception, "Cash sale finalization failed.");
+                return Problem(500, "request.failed");
+            }
+        }).RequireAuthorization("sales.write");
+
+        app.MapPost("/api/v1/sales/{id:guid}/payments", async (
+            Guid id,
+            SalePaymentPostRequest request,
+            HttpRequest http,
+            ClaimsPrincipal user,
+            ISalesService sales,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryUserId(user, out var userId))
+            {
+                return Problem(401, ErrorCodes.AuthenticationRequired);
+            }
+
+            return await PostIdempotentAsync(
+                http,
+                key => sales.AddPaymentAsync(id, request, key, userId, cancellationToken),
+                created => $"/api/v1/sales/{created.SaleId}");
+        }).RequireAuthorization("sales.write");
+
         return app;
+    }
+
+    private static async Task<IResult> PostIdempotentOkAsync<T>(
+        HttpRequest http,
+        Func<Guid, Task<Result<T>>> post)
+    {
+        if (!TryIdempotencyKey(http, out var key, out var error))
+        {
+            return error;
+        }
+
+        return ToResult(await post(key), Results.Ok);
     }
 
     private static async Task<IResult> PostIdempotentAsync<T>(

@@ -22,6 +22,9 @@ public static class ErrorCodes
     public const string StockOpeningExists = "stock.opening_exists";
     public const string StockIdempotencyConflict = "stock.idempotency_conflict";
     public const string StockReconciliation = "stock.reconciliation";
+    public const string CustomerNotFound = "customer.not_found";
+    public const string CustomerInactive = "customer.inactive";
+    public const string CustomerIdempotencyConflict = "customer.idempotency_conflict";
     public const string SupplierNotFound = "suppliers.not_found";
     public const string SupplierNameTaken = "suppliers.name_taken";
     public const string SupplierInactive = "suppliers.inactive";
@@ -31,6 +34,21 @@ public static class ErrorCodes
     public const string PurchaseIdempotencyConflict = "purchase.idempotency_conflict";
     public const string PurchaseProductInactive = "purchase.product_inactive";
     public const string PurchaseSupplierDocumentTaken = "purchase.supplier_document_taken";
+    public const string PurchaseNotReceivable = "purchase.not_receivable";
+    public const string PurchaseNotCancellable = "purchase.not_cancellable";
+    public const string PurchaseReceiptExcess = "purchase.receipt_excess";
+    public const string PurchaseReceiptDocumentTaken = "purchase.receipt_document_taken";
+    public const string PurchaseReceiptIntegrity = "purchase.receipt_integrity";
+    public const string PurchaseReceiptImmutable = "purchase.receipt_immutable";
+    public const string SaleNotFound = "sale.not_found";
+    public const string SaleIdempotencyConflict = "sale.idempotency_conflict";
+    public const string SaleProductInactive = "sale.product_inactive";
+    public const string SaleMovementIntegrity = "sale.movement_integrity";
+    public const string SaleReturnMovementIntegrity = "sale.return_movement_integrity";
+    public const string SaleTotalIntegrity = "sale.total_integrity";
+    public const string SalePaymentIntegrity = "sale.payment_integrity";
+    public const string SaleImmutable = "sale.immutable";
+    public const string PaymentIdempotencyConflict = "payment.idempotency_conflict";
 }
 
 public sealed record FieldError(string Field, string Code);

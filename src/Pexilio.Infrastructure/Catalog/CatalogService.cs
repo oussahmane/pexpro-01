@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 using Pexilio.Application;
 using Pexilio.Domain;
@@ -156,71 +157,141 @@ public sealed class CatalogService(PexilioDbContext database) : ICatalogService
             return Result<ProductResponse>.Fail(OperationFailure.Validation(errors));
         }
 
-        Product? existing = null;
-        if (id is Guid existingId)
+        IDbContextTransaction? transaction = null;
+        try
         {
-            existing = await database.Products.SingleOrDefaultAsync(
-                item => item.Id == existingId && item.CompanyId == company.Id,
+            Product? existing = null;
+            if (id is Guid existingId)
+            {
+                transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+                // Lock the row before reading omitted prices so a concurrent update cannot be overwritten.
+                await database.Database.ExecuteSqlInterpolatedAsync(
+                    $"""SELECT 1 FROM pexilio.product WHERE "CompanyId" = {company.Id} AND "Id" = {existingId} FOR UPDATE""",
+                    cancellationToken);
+                existing = await database.Products.SingleOrDefaultAsync(
+                    item => item.Id == existingId && item.CompanyId == company.Id,
+                    cancellationToken);
+                if (existing is null)
+                {
+                    return Result<ProductResponse>.Fail(OperationFailure.Of(404, ErrorCodes.ProductNotFound));
+                }
+            }
+
+            if (request.CategoryId is Guid categoryId)
+            {
+                var categoryExists = await database.Categories.AnyAsync(
+                    category => category.Id == categoryId && category.CompanyId == company.Id,
+                    cancellationToken);
+                if (!categoryExists)
+                {
+                    return Result<ProductResponse>.Fail(OperationFailure.Validation([new FieldError("categoryId", "categoryId.unknown")]));
+                }
+            }
+
+            var taxRateId = request.TaxRateId ?? await database.TaxRates
+                .Where(rate => rate.CompanyId == company.Id && rate.IsDefault)
+                .Select(rate => (Guid?)rate.Id)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (taxRateId is null || !await database.TaxRates.AnyAsync(rate => rate.Id == taxRateId && rate.CompanyId == company.Id, cancellationToken))
+            {
+                return Result<ProductResponse>.Fail(OperationFailure.Validation([new FieldError("taxRateId", "taxRateId.unknown")]));
+            }
+
+            var productId = existing?.Id ?? Guid.Empty;
+            var skuTaken = await database.Products.AnyAsync(
+                item => item.CompanyId == company.Id && item.SkuKey == draft.SkuKey && item.Id != productId,
                 cancellationToken);
+            if (skuTaken)
+            {
+                return Result<ProductResponse>.Fail(OperationFailure.Of(409, ErrorCodes.SkuTaken));
+            }
+
+            var product = existing ?? new Product { Id = Guid.CreateVersion7(), CompanyId = company.Id };
             if (existing is null)
             {
-                return Result<ProductResponse>.Fail(OperationFailure.Of(404, ErrorCodes.ProductNotFound));
+                database.Products.Add(product);
             }
-        }
 
-        if (request.CategoryId is Guid categoryId)
-        {
-            var categoryExists = await database.Categories.AnyAsync(
-                category => category.Id == categoryId && category.CompanyId == company.Id,
-                cancellationToken);
-            if (!categoryExists)
+            product.CategoryId = request.CategoryId;
+            product.TaxRateId = taxRateId.Value;
+            product.Sku = draft.Sku;
+            product.SkuKey = draft.SkuKey;
+            product.Name = draft.Name;
+            product.Unit = draft.Unit;
+            product.UnitPrice = draft.UnitPrice;
+            product.TrackStock = draft.TrackStock;
+            product.IsActive = draft.IsActive;
+            var priceErrors = new List<FieldError>();
+            var creating = existing is null;
+            if (!ResolvePrice(request.WholesaleUnitPrice, product.WholesaleUnitPrice, creating, "wholesaleUnitPrice", priceErrors, out var wholesale)
+                || !ResolvePrice(request.MinimumUnitPrice, product.MinimumUnitPrice, creating, "minimumUnitPrice", priceErrors, out var minimum))
             {
-                return Result<ProductResponse>.Fail(OperationFailure.Validation([new FieldError("categoryId", "categoryId.unknown")]));
+                return Result<ProductResponse>.Fail(OperationFailure.Validation(priceErrors));
+            }
+
+            if (!CatalogValidator.TryPriceBounds(draft.UnitPrice, wholesale, minimum, out var boundsCode))
+            {
+                return Result<ProductResponse>.Fail(OperationFailure.Validation([new FieldError("minimumUnitPrice", boundsCode)]));
+            }
+
+            product.WholesaleUnitPrice = wholesale;
+            product.MinimumUnitPrice = minimum;
+
+            var saved = await SaveAsync(cancellationToken);
+            if (saved is not null)
+            {
+                return Result<ProductResponse>.Fail(saved);
+            }
+
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                var committed = transaction;
+                transaction = null;
+                await committed.DisposeAsync();
+            }
+
+            var rates = await RateMapAsync(company.Id, cancellationToken);
+            return Result<ProductResponse>.Success(ToResponse(product, rates));
+        }
+        finally
+        {
+            if (transaction is not null)
+            {
+                await transaction.DisposeAsync();
             }
         }
+    }
 
-        var taxRateId = request.TaxRateId ?? await database.TaxRates
-            .Where(rate => rate.CompanyId == company.Id && rate.IsDefault)
-            .Select(rate => (Guid?)rate.Id)
-            .SingleOrDefaultAsync(cancellationToken);
-        if (taxRateId is null || !await database.TaxRates.AnyAsync(rate => rate.Id == taxRateId && rate.CompanyId == company.Id, cancellationToken))
+    private static bool ResolvePrice(
+        OptionalText input,
+        decimal? current,
+        bool creating,
+        string field,
+        List<FieldError> errors,
+        out decimal? price)
+    {
+        if (!input.Specified)
         {
-            return Result<ProductResponse>.Fail(OperationFailure.Validation([new FieldError("taxRateId", "taxRateId.unknown")]));
+            price = creating ? null : current;
+            return true;
         }
 
-        var productId = existing?.Id ?? Guid.Empty;
-        var skuTaken = await database.Products.AnyAsync(
-            item => item.CompanyId == company.Id && item.SkuKey == draft.SkuKey && item.Id != productId,
-            cancellationToken);
-        if (skuTaken)
+        if (string.IsNullOrWhiteSpace(input.Value))
         {
-            return Result<ProductResponse>.Fail(OperationFailure.Of(409, ErrorCodes.SkuTaken));
+            price = null;
+            return true;
         }
 
-        var product = existing ?? new Product { Id = Guid.CreateVersion7(), CompanyId = company.Id };
-        if (existing is null)
+        if (!UnitPriceText.TryParse(input.Value, out var parsed, out var code))
         {
-            database.Products.Add(product);
+            errors.Add(new FieldError(field, code.Replace("unitPrice", field, StringComparison.Ordinal)));
+            price = null;
+            return false;
         }
 
-        product.CategoryId = request.CategoryId;
-        product.TaxRateId = taxRateId.Value;
-        product.Sku = draft.Sku;
-        product.SkuKey = draft.SkuKey;
-        product.Name = draft.Name;
-        product.Unit = draft.Unit;
-        product.UnitPrice = draft.UnitPrice;
-        product.TrackStock = draft.TrackStock;
-        product.IsActive = draft.IsActive;
-
-        var saved = await SaveAsync(cancellationToken);
-        if (saved is not null)
-        {
-            return Result<ProductResponse>.Fail(saved);
-        }
-
-        var rates = await RateMapAsync(company.Id, cancellationToken);
-        return Result<ProductResponse>.Success(ToResponse(product, rates));
+        price = parsed;
+        return true;
     }
 
     private async Task<Company?> CompanyAsync(CancellationToken cancellationToken) =>
@@ -281,6 +352,8 @@ public sealed class CatalogService(PexilioDbContext database) : ICatalogService
             product.TaxRateId,
             rate.ToString("0.######", CultureInfo.InvariantCulture),
             product.TrackStock,
-            product.IsActive);
+            product.IsActive,
+            product.WholesaleUnitPrice is decimal wholesale ? UnitPriceText.Format(wholesale) : null,
+            product.MinimumUnitPrice is decimal minimum ? UnitPriceText.Format(minimum) : null);
     }
 }

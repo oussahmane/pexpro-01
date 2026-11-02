@@ -36,13 +36,28 @@ type PurchaseSummary = {
 };
 
 type PurchaseLine = {
+  id: string;
   productId: string;
   productSku: string;
   productName: string;
   productUnit: string;
   quantityOrdered: string;
+  quantityReceived: string;
   unitCost: string;
   sellingPrice: string;
+};
+
+type PurchaseReceiptLine = {
+  id: string;
+  purchaseLineId: string;
+  quantity: string;
+};
+
+type PurchaseReceipt = {
+  id: string;
+  number: string;
+  documentRef: string;
+  lines: PurchaseReceiptLine[];
 };
 
 type PurchaseDetail = PurchaseSummary & {
@@ -50,6 +65,7 @@ type PurchaseDetail = PurchaseSummary & {
   notes: string | null;
   version: number;
   lines: PurchaseLine[];
+  receipts?: PurchaseReceipt[];
 };
 
 type DraftLine = {
@@ -105,6 +121,8 @@ export function PurchasingPanel({ apiBaseUrl, accessToken, fetcher, locale }: Pu
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [editingPurchase, setEditingPurchase] = useState<PurchaseDetail | null>(null);
+  const [receiveDocument, setReceiveDocument] = useState("");
+  const [receiveQuantities, setReceiveQuantities] = useState<Record<string, string>>({});
   const [errorCode, setErrorCode] = useState<string | null>(null);
 
   useEffect(() => {
@@ -205,6 +223,113 @@ export function PurchasingPanel({ apiBaseUrl, accessToken, fetcher, locale }: Pu
         unitCost: line.unitCost,
       })),
     );
+    setReceiveDocument("");
+    setReceiveQuantities({});
+  }
+
+  function statusLabel(status: string): string {
+    switch (status) {
+      case "ordered":
+        return text("purchasing.ordered");
+      case "partially_received":
+        return text("purchasing.partiallyReceived");
+      case "received":
+        return text("purchasing.received");
+      case "cancelled":
+        return text("purchasing.cancelled");
+      default:
+        return text("purchasing.draft");
+    }
+  }
+
+  function remainingQuantity(line: PurchaseLine): string {
+    const scale = 10000;
+    const ordered = Math.round(Number(line.quantityOrdered) * scale);
+    const received = Math.round(Number(line.quantityReceived ?? "0") * scale);
+    return ((ordered - received) / scale).toFixed(4);
+  }
+
+  async function orderPurchase() {
+    if (!editingPurchase) {
+      return;
+    }
+    setErrorCode(null);
+    const response = await fetcher(`${apiBaseUrl}/api/v1/purchases/${editingPurchase.id}/order`, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "content-type": "application/json",
+        "Idempotency-Key": crypto.randomUUID(),
+      },
+      body: JSON.stringify({ version: editingPurchase.version }),
+    });
+    if (!response.ok) {
+      setErrorCode((await problemCode(response)) ?? "purchase.not_draft");
+      return;
+    }
+    setEditingPurchase((await response.json()) as PurchaseDetail);
+    await reloadLists();
+  }
+
+  async function receivePurchase(event: FormEvent) {
+    event.preventDefault();
+    if (!editingPurchase) {
+      return;
+    }
+    const lines = editingPurchase.lines.flatMap((line) => {
+      const quantity = receiveQuantities[line.id]?.trim() ?? "";
+      return quantity === "" ? [] : [{ purchaseLineId: line.id, quantity }];
+    });
+    if (receiveDocument.trim() === "") {
+      setErrorCode("receiptDocumentRef.required");
+      return;
+    }
+    if (lines.length === 0) {
+      setErrorCode("lines.required");
+      return;
+    }
+    setErrorCode(null);
+    const response = await fetcher(`${apiBaseUrl}/api/v1/purchases/${editingPurchase.id}/receipts`, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "content-type": "application/json",
+        "Idempotency-Key": crypto.randomUUID(),
+      },
+      body: JSON.stringify({
+        version: editingPurchase.version,
+        documentRef: receiveDocument,
+        lines,
+      }),
+    });
+    if (!response.ok) {
+      setErrorCode((await problemCode(response)) ?? "purchase.not_receivable");
+      return;
+    }
+    await openPurchase(editingPurchase.id);
+    await reloadLists();
+  }
+
+  async function cancelPurchase() {
+    if (!editingPurchase) {
+      return;
+    }
+    setErrorCode(null);
+    const response = await fetcher(`${apiBaseUrl}/api/v1/purchases/${editingPurchase.id}/cancel`, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "content-type": "application/json",
+        "Idempotency-Key": crypto.randomUUID(),
+      },
+      body: JSON.stringify({ version: editingPurchase.version }),
+    });
+    if (!response.ok) {
+      setErrorCode((await problemCode(response)) ?? "purchase.not_cancellable");
+      return;
+    }
+    setEditingPurchase((await response.json()) as PurchaseDetail);
+    await reloadLists();
   }
 
   function newDraft() {
@@ -355,6 +480,8 @@ export function PurchasingPanel({ apiBaseUrl, accessToken, fetcher, locale }: Pu
             <button type="button" className="text-start" onClick={() => void openPurchase(purchase.id)}>
               <LtrValue>{purchase.number}</LtrValue>
               {" · "}
+              {statusLabel(purchase.status)}
+              {" · "}
               {purchase.supplierName}
               {purchase.supplierDocumentRef ? (
                 <>
@@ -366,7 +493,7 @@ export function PurchasingPanel({ apiBaseUrl, accessToken, fetcher, locale }: Pu
           </li>
         ))}
       </ul>
-      {canWrite ? (
+      {canWrite && (editingPurchase === null || editingPurchase.status === "draft") ? (
         <form className="flex flex-col gap-3" onSubmit={(event) => void saveDraft(event)} data-testid="purchase-draft">
           <button type="button" className="w-fit border border-stone-400 bg-white px-2 py-1 text-sm" onClick={newDraft}>
             {text("purchasing.newDraft")}
@@ -499,10 +626,97 @@ export function PurchasingPanel({ apiBaseUrl, accessToken, fetcher, locale }: Pu
               {text("purchasing.deleteDraft")}
             </button>
           ) : null}
+          {editingPurchase?.status === "draft" ? (
+            <button
+              type="button"
+              className="w-fit border border-stone-500 bg-white px-3 py-1.5 text-sm"
+              onClick={() => void orderPurchase()}
+            >
+              {text("purchasing.order")}
+            </button>
+          ) : null}
         </form>
-      ) : errorCode ? (
-        <p role="alert">{text(errorCode)}</p>
       ) : null}
+      {editingPurchase && (editingPurchase.status !== "draft" || !canWrite) ? (
+        <section className="flex flex-col gap-3" data-testid="purchase-detail">
+          <p>
+            {statusLabel(editingPurchase.status)}
+            {" · "}
+            {editingPurchase.supplierName}
+          </p>
+          <ul className="flex flex-col gap-2">
+            {editingPurchase.lines.map((line) => (
+              <li key={line.id}>
+                <LtrValue>{line.productSku}</LtrValue>
+                {" · "}
+                {line.productName}
+                {" · "}
+                <LtrValue>{line.quantityOrdered}</LtrValue>
+                {" · "}
+                {text("purchasing.remaining")} <LtrValue>{remainingQuantity(line)}</LtrValue>
+              </li>
+            ))}
+          </ul>
+          <h3 className="text-lg font-semibold">{text("purchasing.history")}</h3>
+          {(editingPurchase.receipts ?? []).length === 0 ? <p>{text("purchasing.emptyHistory")}</p> : null}
+          <ul className="flex flex-col gap-2">
+            {(editingPurchase.receipts ?? []).map((receipt) => (
+              <li key={receipt.id}>
+                <LtrValue>{receipt.number}</LtrValue>
+                {" · "}
+                <LtrValue>{receipt.documentRef}</LtrValue>
+                {" · "}
+                <LtrValue>{receipt.lines.map((line) => line.quantity).join(", ")}</LtrValue>
+              </li>
+            ))}
+          </ul>
+          {canWrite && (editingPurchase.status === "ordered" || editingPurchase.status === "partially_received") ? (
+            <form className="flex flex-col gap-3" onSubmit={(event) => void receivePurchase(event)} data-testid="purchase-receipt">
+              <label className="flex flex-col gap-1 text-sm">
+                <span>{text("purchasing.receiptDocument")}</span>
+                <input
+                  dir="ltr"
+                  className="w-full border border-stone-400 px-2 py-1"
+                  value={receiveDocument}
+                  onChange={(event) => setReceiveDocument(event.target.value)}
+                />
+              </label>
+              {editingPurchase.lines.map((line) => (
+                <label key={line.id} className="flex flex-col gap-1 text-sm">
+                  <span>
+                    {text("purchasing.receiveQuantity")} · {line.productName}
+                  </span>
+                  <input
+                    dir="ltr"
+                    className="w-full border border-stone-400 px-2 py-1"
+                    value={receiveQuantities[line.id] ?? ""}
+                    onChange={(event) =>
+                      setReceiveQuantities((current) => ({ ...current, [line.id]: event.target.value }))
+                    }
+                  />
+                </label>
+              ))}
+              <button type="submit" className="w-fit border border-stone-500 bg-white px-3 py-1.5 text-sm">
+                {text("purchasing.receive")}
+              </button>
+            </form>
+          ) : null}
+          {canWrite &&
+          editingPurchase.status === "ordered" &&
+          editingPurchase.lines.every((line) => Number(line.quantityReceived ?? "0") === 0) &&
+          (editingPurchase.receipts ?? []).length === 0 ? (
+            <button
+              type="button"
+              className="w-fit border border-stone-500 bg-white px-3 py-1.5 text-sm"
+              onClick={() => void cancelPurchase()}
+            >
+              {text("purchasing.cancelOrder")}
+            </button>
+          ) : null}
+          {errorCode ? <p role="alert">{text(errorCode)}</p> : null}
+        </section>
+      ) : null}
+      {!canWrite && errorCode && editingPurchase === null ? <p role="alert">{text(errorCode)}</p> : null}
     </section>
   );
 }

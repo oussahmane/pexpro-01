@@ -70,4 +70,9 @@ public static class StockRules
 
     public static bool AtMinimum(decimal quantity, decimal? minimum) =>
         minimum is not null && quantity == minimum.Value;
+
+    public static decimal NextBalance(decimal available, decimal delta) => available + delta;
+
+    public static bool DeferredTriggerAccepts(IReadOnlyList<decimal> balanceAfterValues, decimal finalBalance) =>
+        balanceAfterValues.Count > 0 && balanceAfterValues.All(value => value == finalBalance);
 }

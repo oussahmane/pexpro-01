@@ -94,4 +94,25 @@ public static class CatalogValidator
 
         return trimmed;
     }
+
+    public static bool TryPriceBounds(decimal retail, decimal? wholesale, decimal? minimum, out string code)
+    {
+        if (minimum is decimal floor)
+        {
+            if (floor > retail)
+            {
+                code = "minimum.above_price";
+                return false;
+            }
+
+            if (wholesale is decimal gros && floor > gros)
+            {
+                code = "minimum.above_wholesale";
+                return false;
+            }
+        }
+
+        code = "";
+        return true;
+    }
 }

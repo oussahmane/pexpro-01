@@ -25,6 +25,12 @@ namespace Pexilio.Infrastructure.Persistence.Migrations
 
             modelBuilder.HasSequence("purchase_number_seq", "pexilio");
 
+            modelBuilder.HasSequence("purchase_receipt_number_seq", "pexilio");
+
+            modelBuilder.HasSequence("sale_number_seq", "pexilio");
+
+            modelBuilder.HasSequence("sale_return_number_seq", "pexilio");
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
                 {
                     b.Property<int>("Id")
@@ -180,6 +186,9 @@ namespace Pexilio.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<decimal?>("MinimumUnitPrice")
+                        .HasColumnType("numeric(19,4)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -209,7 +218,13 @@ namespace Pexilio.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("UnitPrice")
                         .HasColumnType("numeric(19,4)");
 
+                    b.Property<decimal?>("WholesaleUnitPrice")
+                        .HasColumnType("numeric(19,4)");
+
                     b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "CompanyId")
+                        .HasName("AK_product_id_company");
 
                     b.HasIndex("CategoryId");
 
@@ -220,6 +235,8 @@ namespace Pexilio.Infrastructure.Persistence.Migrations
 
                     b.ToTable("product", "pexilio", t =>
                         {
+                            t.HasCheckConstraint("CK_product_price_bounds", "(\"WholesaleUnitPrice\" IS NULL OR \"WholesaleUnitPrice\" >= 0)\nAND (\"MinimumUnitPrice\" IS NULL OR \"MinimumUnitPrice\" >= 0)\nAND (\"MinimumUnitPrice\" IS NULL OR \"MinimumUnitPrice\" <= \"UnitPrice\")\nAND (\"MinimumUnitPrice\" IS NULL OR \"WholesaleUnitPrice\" IS NULL OR \"MinimumUnitPrice\" <= \"WholesaleUnitPrice\")");
+
                             t.HasCheckConstraint("CK_product_unit_price", "\"UnitPrice\" >= 0");
                         });
                 });
@@ -327,6 +344,130 @@ namespace Pexilio.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Pexilio.Domain.Customers.Customer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Ai")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("CreditLimit")
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("NameKey")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("Nif")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Nis")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Rc")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "CompanyId")
+                        .HasName("AK_customer_id_company");
+
+                    b.HasIndex("CompanyId", "NameKey")
+                        .HasDatabaseName("IX_customer_company_name_key");
+
+                    b.ToTable("customer", "pexilio", t =>
+                        {
+                            t.HasCheckConstraint("CK_customer_credit_limit", "\"CreditLimit\" IS NULL OR \"CreditLimit\" >= 0");
+
+                            t.HasCheckConstraint("CK_customer_identifiers", "\"Type\" = 'business'\nOR (\"Rc\" IS NULL AND \"Nif\" IS NULL AND \"Nis\" IS NULL AND \"Ai\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_customer_name", "char_length(btrim(\"Name\")) > 0 AND char_length(\"Name\") <= 160 AND char_length(\"NameKey\") > 0");
+
+                            t.HasCheckConstraint("CK_customer_type", "\"Type\" IN ('individual', 'business')");
+                        });
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Customers.CustomerIdempotency", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("IdempotencyKey")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ResponseJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "Operation", "IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_customer_idempotency_company_operation_key");
+
+                    b.ToTable("customer_idempotency", "pexilio");
+                });
+
             modelBuilder.Entity("Pexilio.Domain.Purchasing.Purchase", b =>
                 {
                     b.Property<Guid>("Id")
@@ -392,6 +533,9 @@ namespace Pexilio.Infrastructure.Persistence.Migrations
                         .HasColumnName("xmin");
 
                     b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "CompanyId")
+                        .HasName("AK_purchase_id_company");
 
                     b.HasIndex("CreatedByUserId");
 
@@ -498,6 +642,9 @@ namespace Pexilio.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasAlternateKey("Id", "PurchaseId", "ProductId")
+                        .HasName("AK_purchase_line_identity");
+
                     b.HasIndex("ProductId");
 
                     b.HasIndex("PurchaseId", "LineNumber")
@@ -508,7 +655,127 @@ namespace Pexilio.Infrastructure.Persistence.Migrations
 
                     b.ToTable("purchase_line", "pexilio", t =>
                         {
+                            t.HasTrigger("purchase_line_received_matches_receipts");
+
+                            t.HasTrigger("purchase_line_received_starts_at_zero");
+
                             t.HasCheckConstraint("CK_purchase_line_amounts", "\"QuantityOrdered\" > 0\nAND \"QuantityReceived\" >= 0\nAND \"QuantityReceived\" <= \"QuantityOrdered\"\nAND \"UnitCost\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Purchasing.PurchaseReceipt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DocumentKey")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("DocumentRef")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("PurchaseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ReceivedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ReceivedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "PurchaseId", "CompanyId")
+                        .HasName("AK_receipt_identity");
+
+                    b.HasIndex("ReceivedByUserId");
+
+                    b.HasIndex("CompanyId", "Number")
+                        .IsUnique()
+                        .HasDatabaseName("UX_receipt_company_number");
+
+                    b.HasIndex("PurchaseId", "CompanyId");
+
+                    b.HasIndex("PurchaseId", "DocumentKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_receipt_purchase_document");
+
+                    b.ToTable("purchase_receipt", "pexilio", t =>
+                        {
+                            t.HasTrigger("purchase_receipt_append_only");
+
+                            t.HasTrigger("purchase_receipt_append_only_truncate");
+                        });
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Purchasing.PurchaseReceiptLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PurchaseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PurchaseLineId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("ReceiptId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StockMovementId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("UnitCost")
+                        .HasColumnType("numeric(19,4)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StockMovementId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_receipt_line_movement");
+
+                    b.HasIndex("ProductId", "CompanyId");
+
+                    b.HasIndex("ReceiptId", "PurchaseLineId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_receipt_line_receipt_purchase_line");
+
+                    b.HasIndex("PurchaseLineId", "PurchaseId", "ProductId");
+
+                    b.HasIndex("ReceiptId", "PurchaseId", "CompanyId");
+
+                    b.ToTable("purchase_receipt_line", "pexilio", t =>
+                        {
+                            t.HasTrigger("purchase_receipt_line_append_only");
+
+                            t.HasTrigger("purchase_receipt_line_append_only_truncate");
+
+                            t.HasTrigger("purchase_receipt_line_matches_movement");
+
+                            t.HasCheckConstraint("CK_receipt_line_quantity", "\"Quantity\" > 0 AND \"UnitCost\" >= 0");
                         });
                 });
 
@@ -572,6 +839,462 @@ namespace Pexilio.Infrastructure.Persistence.Migrations
                     b.ToTable("supplier", "pexilio", t =>
                         {
                             t.HasCheckConstraint("CK_supplier_name", "char_length(btrim(\"Name\")) > 0 AND char_length(\"Name\") <= 160");
+                        });
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Sales.DocumentCounter", b =>
+                {
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Series")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<long>("LastValue")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("CompanyId", "Series");
+
+                    b.ToTable("document_counter", "pexilio", t =>
+                        {
+                            t.HasCheckConstraint("CK_document_counter_value", "\"LastValue\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Sales.Sale", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CustomerName")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("CustomerType")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<decimal>("DiscountAmount")
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("DiscountKind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("none");
+
+                    b.Property<decimal?>("DiscountRate")
+                        .HasColumnType("numeric(7,4)");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<decimal>("Subtotal")
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal>("Total")
+                        .HasColumnType("numeric(19,4)");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "CompanyId")
+                        .HasName("AK_sale_id_company");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("CompanyId", "CreatedAtUtc");
+
+                    b.HasIndex("CompanyId", "Number")
+                        .IsUnique()
+                        .HasDatabaseName("UX_sale_company_number");
+
+                    b.HasIndex("CustomerId", "CompanyId");
+
+                    b.HasIndex("CompanyId", "CustomerId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_sale_company_customer_created");
+
+                    b.ToTable("sale", "pexilio", t =>
+                        {
+                            t.HasTrigger("sale_append_only");
+
+                            t.HasTrigger("sale_append_only_truncate");
+
+                            t.HasTrigger("sale_outstanding_on_sale");
+
+                            t.HasTrigger("sale_totals_match_lines");
+
+                            t.HasCheckConstraint("CK_sale_amounts", "\"Subtotal\" >= 0\nAND \"DiscountAmount\" >= 0\nAND \"Total\" >= 0\nAND \"Total\" = \"Subtotal\" - \"DiscountAmount\"");
+
+                            t.HasCheckConstraint("CK_sale_customer", "(\"CustomerId\" IS NULL AND \"CustomerName\" IS NULL AND \"CustomerType\" IS NULL)\nOR (\"CustomerId\" IS NOT NULL AND char_length(btrim(\"CustomerName\")) > 0 AND \"CustomerType\" IN ('individual', 'business'))");
+
+                            t.HasCheckConstraint("CK_sale_discount", "(\"DiscountKind\" = 'none' AND \"DiscountAmount\" = 0 AND \"DiscountRate\" IS NULL)\nOR (\"DiscountKind\" = 'amount' AND \"DiscountRate\" IS NULL)\nOR (\"DiscountKind\" = 'percent' AND \"DiscountRate\" >= 0 AND \"DiscountRate\" <= 100)");
+
+                            t.HasCheckConstraint("CK_sale_status", "\"Status\" = 'posted'");
+                        });
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Sales.SaleIdempotency", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("IdempotencyKey")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ResponseJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("SaleId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SaleId");
+
+                    b.HasIndex("CompanyId", "Operation", "IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_sale_idempotency_company_operation_key");
+
+                    b.ToTable("sale_idempotency", "pexilio");
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Sales.SaleLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("AllocatedSaleDiscount")
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<bool>("BelowMinimumOverride")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DiscountKind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("none");
+
+                    b.Property<decimal?>("DiscountRate")
+                        .HasColumnType("numeric(7,4)");
+
+                    b.Property<decimal>("LineDiscount")
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<int>("LineNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("LineTotal")
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal>("ListUnitPrice")
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("PriceKind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("retail");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ProductSku")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ProductUnit")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("SaleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("StockMovementId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("TaxRate")
+                        .HasColumnType("numeric(9,6)");
+
+                    b.Property<Guid>("TaxRateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("TracksStock")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasColumnType("numeric(19,4)");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "SaleId", "ProductId")
+                        .HasName("AK_sale_line_identity");
+
+                    b.HasIndex("StockMovementId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_sale_line_movement")
+                        .HasFilter("\"StockMovementId\" IS NOT NULL");
+
+                    b.HasIndex("TaxRateId");
+
+                    b.HasIndex("ProductId", "CompanyId");
+
+                    b.HasIndex("SaleId", "CompanyId");
+
+                    b.HasIndex("SaleId", "LineNumber")
+                        .IsUnique();
+
+                    b.HasIndex("SaleId", "ProductId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_sale_line_sale_product");
+
+                    b.ToTable("sale_line", "pexilio", t =>
+                        {
+                            t.HasTrigger("sale_line_append_only");
+
+                            t.HasTrigger("sale_line_append_only_truncate");
+
+                            t.HasTrigger("sale_line_matches_movement");
+
+                            t.HasCheckConstraint("CK_sale_line_amounts", "\"LineNumber\" > 0\nAND \"Quantity\" > 0\nAND \"ListUnitPrice\" >= 0\nAND \"UnitPrice\" >= 0\nAND \"LineDiscount\" >= 0\nAND \"AllocatedSaleDiscount\" >= 0\nAND \"AllocatedSaleDiscount\" <= \"LineTotal\"\nAND \"LineTotal\" >= 0\nAND \"LineTotal\" = (\"Quantity\" * \"UnitPrice\") - \"LineDiscount\"\nAND \"TaxRate\" >= 0");
+
+                            t.HasCheckConstraint("CK_sale_line_price", "\"PriceKind\" IN ('retail', 'wholesale')\nAND (\n    (\"DiscountKind\" = 'none' AND \"LineDiscount\" = 0 AND \"DiscountRate\" IS NULL)\n    OR (\"DiscountKind\" = 'amount' AND \"DiscountRate\" IS NULL)\n    OR (\"DiscountKind\" = 'percent' AND \"DiscountRate\" >= 0 AND \"DiscountRate\" <= 100)\n)");
+                        });
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Sales.SalePayment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset>("PaidAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReceiptNumber")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("ReceivedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("SaleId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReceivedByUserId");
+
+                    b.HasIndex("CompanyId", "ReceiptNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UX_sale_payment_company_receipt")
+                        .HasFilter("\"ReceiptNumber\" IS NOT NULL");
+
+                    b.HasIndex("SaleId", "CompanyId");
+
+                    b.ToTable("sale_payment", "pexilio", t =>
+                        {
+                            t.HasTrigger("sale_outstanding_on_payment");
+
+                            t.HasTrigger("sale_payment_append_only");
+
+                            t.HasTrigger("sale_payment_append_only_truncate");
+
+                            t.HasCheckConstraint("CK_sale_payment_amount", "\"Amount\" > 0");
+
+                            t.HasCheckConstraint("CK_sale_payment_method", "\"Method\" IN ('cash', 'transfer', 'card', 'other')");
+                        });
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Sales.SaleReturn", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("ReturnedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ReturnedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SaleId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "SaleId", "CompanyId")
+                        .HasName("AK_sale_return_identity");
+
+                    b.HasIndex("ReturnedByUserId");
+
+                    b.HasIndex("CompanyId", "Number")
+                        .IsUnique()
+                        .HasDatabaseName("UX_sale_return_company_number");
+
+                    b.HasIndex("SaleId", "CompanyId");
+
+                    b.ToTable("sale_return", "pexilio", t =>
+                        {
+                            t.HasTrigger("sale_return_append_only");
+
+                            t.HasTrigger("sale_return_append_only_truncate");
+
+                            t.HasCheckConstraint("CK_sale_return_reason", "char_length(btrim(\"Reason\")) > 0 AND char_length(\"Reason\") <= 200");
+                        });
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Sales.SaleReturnLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<Guid>("ReturnId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SaleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SaleLineId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("StockMovementId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("TracksStock")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StockMovementId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_sale_return_line_movement")
+                        .HasFilter("\"StockMovementId\" IS NOT NULL");
+
+                    b.HasIndex("ReturnId", "SaleLineId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_sale_return_line_return_sale_line");
+
+                    b.HasIndex("ReturnId", "SaleId", "CompanyId");
+
+                    b.HasIndex("SaleLineId", "SaleId", "ProductId");
+
+                    b.ToTable("sale_return_line", "pexilio", t =>
+                        {
+                            t.HasTrigger("sale_outstanding_on_return_line");
+
+                            t.HasTrigger("sale_return_line_append_only");
+
+                            t.HasTrigger("sale_return_line_append_only_truncate");
+
+                            t.HasTrigger("sale_return_line_matches_movement");
+
+                            t.HasTrigger("sale_return_line_within_sale");
+
+                            t.HasCheckConstraint("CK_sale_return_line_amounts", "\"Quantity\" > 0 AND \"Amount\" >= 0");
                         });
                 });
 
@@ -742,6 +1465,21 @@ namespace Pexilio.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CompanyId", "ProductId", "OccurredAtUtc");
 
+                    b.HasIndex(new[] { "SourceType", "SourceId" }, "UX_stock_movement_purchase_source")
+                        .IsUnique()
+                        .HasDatabaseName("UX_stock_movement_purchase_source")
+                        .HasFilter("\"SourceType\" = 'purchase' AND \"SourceId\" IS NOT NULL");
+
+                    b.HasIndex(new[] { "SourceType", "SourceId" }, "UX_stock_movement_sale_return_source")
+                        .IsUnique()
+                        .HasDatabaseName("UX_stock_movement_sale_return_source")
+                        .HasFilter("\"SourceType\" = 'sale_return' AND \"SourceId\" IS NOT NULL");
+
+                    b.HasIndex(new[] { "SourceType", "SourceId" }, "UX_stock_movement_sale_source")
+                        .IsUnique()
+                        .HasDatabaseName("UX_stock_movement_sale_source")
+                        .HasFilter("\"SourceType\" = 'sale' AND \"SourceId\" IS NOT NULL");
+
                     b.ToTable("stock_movement", "pexilio", t =>
                         {
                             t.HasTrigger("stock_movement_append_only");
@@ -749,6 +1487,10 @@ namespace Pexilio.Infrastructure.Persistence.Migrations
                             t.HasTrigger("stock_movement_append_only_truncate");
 
                             t.HasTrigger("stock_movement_matches_balance");
+
+                            t.HasTrigger("stock_movement_sale_return_source_matches_line");
+
+                            t.HasTrigger("stock_movement_sale_source_matches_line");
 
                             t.HasCheckConstraint("CK_stock_movement_delta", "\"QuantityDelta\" <> 0\nAND (\n    (\"MovementType\" IN ('opening', 'receipt', 'sale_return') AND \"QuantityDelta\" > 0)\n    OR (\"MovementType\" = 'adjustment' AND \"QuantityDelta\" <> 0)\n    OR (\"MovementType\" = 'sale' AND \"QuantityDelta\" < 0)\n)");
 
@@ -984,6 +1726,24 @@ namespace Pexilio.Infrastructure.Persistence.Migrations
                     b.Navigation("Company");
                 });
 
+            modelBuilder.Entity("Pexilio.Domain.Customers.Customer", b =>
+                {
+                    b.HasOne("Pexilio.Domain.Company.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Customers.CustomerIdempotency", b =>
+                {
+                    b.HasOne("Pexilio.Domain.Company.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Pexilio.Domain.Purchasing.Purchase", b =>
                 {
                     b.HasOne("Pexilio.Domain.Company.Company", null)
@@ -1029,6 +1789,58 @@ namespace Pexilio.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Pexilio.Domain.Purchasing.PurchaseReceipt", b =>
+                {
+                    b.HasOne("Pexilio.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("ReceivedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_receipt_user");
+
+                    b.HasOne("Pexilio.Domain.Purchasing.Purchase", null)
+                        .WithMany()
+                        .HasForeignKey("PurchaseId", "CompanyId")
+                        .HasPrincipalKey("Id", "CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_receipt_purchase");
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Purchasing.PurchaseReceiptLine", b =>
+                {
+                    b.HasOne("Pexilio.Domain.Stock.StockMovement", null)
+                        .WithMany()
+                        .HasForeignKey("StockMovementId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_receipt_line_movement");
+
+                    b.HasOne("Pexilio.Domain.Catalog.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId", "CompanyId")
+                        .HasPrincipalKey("Id", "CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_receipt_line_product");
+
+                    b.HasOne("Pexilio.Domain.Purchasing.PurchaseLine", null)
+                        .WithMany()
+                        .HasForeignKey("PurchaseLineId", "PurchaseId", "ProductId")
+                        .HasPrincipalKey("Id", "PurchaseId", "ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_receipt_line_purchase_line");
+
+                    b.HasOne("Pexilio.Domain.Purchasing.PurchaseReceipt", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("ReceiptId", "PurchaseId", "CompanyId")
+                        .HasPrincipalKey("Id", "PurchaseId", "CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_receipt_line_receipt");
+                });
+
             modelBuilder.Entity("Pexilio.Domain.Purchasing.Supplier", b =>
                 {
                     b.HasOne("Pexilio.Domain.Company.Company", null)
@@ -1036,6 +1848,141 @@ namespace Pexilio.Infrastructure.Persistence.Migrations
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Sales.DocumentCounter", b =>
+                {
+                    b.HasOne("Pexilio.Domain.Company.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Sales.Sale", b =>
+                {
+                    b.HasOne("Pexilio.Domain.Company.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Pexilio.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Pexilio.Domain.Customers.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId", "CompanyId")
+                        .HasPrincipalKey("Id", "CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_sale_customer");
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Sales.SaleIdempotency", b =>
+                {
+                    b.HasOne("Pexilio.Domain.Company.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Pexilio.Domain.Sales.Sale", null)
+                        .WithMany()
+                        .HasForeignKey("SaleId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Sales.SaleLine", b =>
+                {
+                    b.HasOne("Pexilio.Domain.Stock.StockMovement", null)
+                        .WithMany()
+                        .HasForeignKey("StockMovementId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_sale_line_movement");
+
+                    b.HasOne("Pexilio.Domain.Company.TaxRate", null)
+                        .WithMany()
+                        .HasForeignKey("TaxRateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Pexilio.Domain.Catalog.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId", "CompanyId")
+                        .HasPrincipalKey("Id", "CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_sale_line_product");
+
+                    b.HasOne("Pexilio.Domain.Sales.Sale", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("SaleId", "CompanyId")
+                        .HasPrincipalKey("Id", "CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_sale_line_sale");
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Sales.SalePayment", b =>
+                {
+                    b.HasOne("Pexilio.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("ReceivedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Pexilio.Domain.Sales.Sale", null)
+                        .WithMany("Payments")
+                        .HasForeignKey("SaleId", "CompanyId")
+                        .HasPrincipalKey("Id", "CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_sale_payment_sale");
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Sales.SaleReturn", b =>
+                {
+                    b.HasOne("Pexilio.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("ReturnedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Pexilio.Domain.Sales.Sale", null)
+                        .WithMany()
+                        .HasForeignKey("SaleId", "CompanyId")
+                        .HasPrincipalKey("Id", "CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_sale_return_sale");
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Sales.SaleReturnLine", b =>
+                {
+                    b.HasOne("Pexilio.Domain.Stock.StockMovement", null)
+                        .WithMany()
+                        .HasForeignKey("StockMovementId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_sale_return_line_movement");
+
+                    b.HasOne("Pexilio.Domain.Sales.SaleReturn", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("ReturnId", "SaleId", "CompanyId")
+                        .HasPrincipalKey("Id", "SaleId", "CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_sale_return_line_return");
+
+                    b.HasOne("Pexilio.Domain.Sales.SaleLine", null)
+                        .WithMany()
+                        .HasForeignKey("SaleLineId", "SaleId", "ProductId")
+                        .HasPrincipalKey("Id", "SaleId", "ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_sale_return_line_sale_line");
                 });
 
             modelBuilder.Entity("Pexilio.Domain.Stock.StockBalance", b =>
@@ -1113,6 +2060,23 @@ namespace Pexilio.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Pexilio.Domain.Purchasing.Purchase", b =>
+                {
+                    b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Purchasing.PurchaseReceipt", b =>
+                {
+                    b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Sales.Sale", b =>
+                {
+                    b.Navigation("Lines");
+
+                    b.Navigation("Payments");
+                });
+
+            modelBuilder.Entity("Pexilio.Domain.Sales.SaleReturn", b =>
                 {
                     b.Navigation("Lines");
                 });

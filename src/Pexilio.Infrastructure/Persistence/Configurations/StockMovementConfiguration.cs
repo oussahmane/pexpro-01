@@ -35,6 +35,8 @@ public sealed class StockMovementConfiguration : IEntityTypeConfiguration<StockM
             table.HasTrigger("stock_movement_append_only");
             table.HasTrigger("stock_movement_append_only_truncate");
             table.HasTrigger("stock_movement_matches_balance");
+            table.HasTrigger("stock_movement_sale_source_matches_line");
+            table.HasTrigger("stock_movement_sale_return_source_matches_line");
         });
         builder.HasKey(movement => movement.Id);
         builder.Property(movement => movement.MovementType).HasMaxLength(32).IsRequired();
@@ -44,6 +46,18 @@ public sealed class StockMovementConfiguration : IEntityTypeConfiguration<StockM
         builder.Property(movement => movement.UnitCost).HasColumnType("numeric(19,4)");
         builder.Property(movement => movement.SourceType).HasMaxLength(32);
         builder.HasIndex(movement => new { movement.CompanyId, movement.ProductId, movement.OccurredAtUtc });
+        builder.HasIndex(movement => new { movement.SourceType, movement.SourceId }, "UX_stock_movement_purchase_source")
+            .IsUnique()
+            .HasFilter("\"SourceType\" = 'purchase' AND \"SourceId\" IS NOT NULL")
+            .HasDatabaseName("UX_stock_movement_purchase_source");
+        builder.HasIndex(movement => new { movement.SourceType, movement.SourceId }, "UX_stock_movement_sale_source")
+            .IsUnique()
+            .HasFilter("\"SourceType\" = 'sale' AND \"SourceId\" IS NOT NULL")
+            .HasDatabaseName("UX_stock_movement_sale_source");
+        builder.HasIndex(movement => new { movement.SourceType, movement.SourceId }, "UX_stock_movement_sale_return_source")
+            .IsUnique()
+            .HasFilter("\"SourceType\" = 'sale_return' AND \"SourceId\" IS NOT NULL")
+            .HasDatabaseName("UX_stock_movement_sale_return_source");
         builder.HasOne<Company>()
             .WithMany()
             .HasForeignKey(movement => movement.CompanyId)

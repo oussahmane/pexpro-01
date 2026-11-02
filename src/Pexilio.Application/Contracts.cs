@@ -70,6 +70,13 @@ public sealed record CategoryRequest(string? Name, Guid? ParentId);
 
 public sealed record CategoryResponse(Guid Id, string Name, Guid? ParentId);
 
+public readonly struct OptionalText
+{
+    public bool Specified { get; init; }
+
+    public string? Value { get; init; }
+}
+
 public sealed record ProductRequest(
     string? Sku,
     string? Name,
@@ -78,7 +85,9 @@ public sealed record ProductRequest(
     Guid? CategoryId,
     Guid? TaxRateId,
     bool? TrackStock,
-    bool? IsActive);
+    bool? IsActive,
+    OptionalText WholesaleUnitPrice = default,
+    OptionalText MinimumUnitPrice = default);
 
 public sealed record ProductResponse(
     Guid Id,
@@ -90,7 +99,9 @@ public sealed record ProductResponse(
     Guid TaxRateId,
     string TaxRate,
     bool TrackStock,
-    bool IsActive);
+    bool IsActive,
+    string? WholesaleUnitPrice = null,
+    string? MinimumUnitPrice = null);
 
 public sealed class StockQuantityRequest
 {
@@ -166,6 +177,65 @@ public sealed record SupplierResponse(
     string? Notes,
     bool IsActive);
 
+public sealed class CustomerRequest
+{
+    public string? Type { get; set; }
+
+    public string? Name { get; set; }
+
+    public string? Phone { get; set; }
+
+    public string? Address { get; set; }
+
+    public string? Notes { get; set; }
+
+    public string? Rc { get; set; }
+
+    public string? Nif { get; set; }
+
+    public string? Nis { get; set; }
+
+    public string? Ai { get; set; }
+
+    public string? CreditLimit { get; set; }
+
+    public bool? IsActive { get; set; }
+}
+
+public sealed record CustomerResponse(
+    Guid Id,
+    string Type,
+    string Name,
+    string? Phone,
+    string? Address,
+    string? Notes,
+    string? Rc,
+    string? Nif,
+    string? Nis,
+    string? Ai,
+    string? CreditLimit,
+    bool IsActive,
+    string OutstandingAmount);
+
+public sealed record CustomerStatementLineResponse(
+    DateTimeOffset OccurredAt,
+    string Kind,
+    Guid DocumentId,
+    string? DocumentNumber,
+    string Amount,
+    string RunningBalance);
+
+public sealed record CustomerStatementResponse(
+    Guid CustomerId,
+    string CustomerName,
+    string TimeZoneId,
+    string From,
+    string To,
+    string OpeningBalance,
+    string ClosingBalance,
+    string OutstandingAmount,
+    IReadOnlyList<CustomerStatementLineResponse> Lines);
+
 public sealed class PurchaseLineRequest
 {
     public Guid ProductId { get; set; }
@@ -220,7 +290,172 @@ public sealed record PurchaseResponse(
     string? Notes,
     uint Version,
     DateTimeOffset CreatedAt,
-    IReadOnlyList<PurchaseLineResponse> Lines);
+    IReadOnlyList<PurchaseLineResponse> Lines,
+    DateTimeOffset? OrderedAt,
+    DateTimeOffset? ReceivedAt,
+    DateTimeOffset? CancelledAt,
+    IReadOnlyList<PurchaseReceiptResponse> Receipts);
+
+public sealed class PurchaseVersionRequest
+{
+    public uint? Version { get; set; }
+}
+
+public sealed class PurchaseReceiptLineRequest
+{
+    public Guid PurchaseLineId { get; set; }
+
+    public string? Quantity { get; set; }
+}
+
+public sealed class PurchaseReceiptRequest
+{
+    public uint? Version { get; set; }
+
+    public string? DocumentRef { get; set; }
+
+    public List<PurchaseReceiptLineRequest>? Lines { get; set; }
+}
+
+public sealed record PurchaseReceiptLineResponse(
+    Guid Id,
+    Guid PurchaseLineId,
+    Guid ProductId,
+    string Quantity,
+    string UnitCost,
+    Guid StockMovementId);
+
+public sealed record PurchaseReceiptResponse(
+    Guid Id,
+    string Number,
+    string DocumentRef,
+    DateTimeOffset ReceivedAt,
+    Guid ReceivedBy,
+    IReadOnlyList<PurchaseReceiptLineResponse> Lines);
+
+public sealed class SaleLineRequest
+{
+    public Guid ProductId { get; set; }
+
+    public string? Quantity { get; set; }
+
+    public string? UnitPrice { get; set; }
+
+    public string? LineTotal { get; set; }
+
+    public string? PriceKind { get; set; }
+
+    public string? LineDiscount { get; set; }
+
+    public string? DiscountKind { get; set; }
+
+    public string? DiscountRate { get; set; }
+}
+
+public sealed class SalePaymentRequest
+{
+    public string? Method { get; set; }
+
+    public string? Amount { get; set; }
+}
+
+public sealed class SaleFinalizeRequest
+{
+    public List<SaleLineRequest>? Lines { get; set; }
+
+    public string? Total { get; set; }
+
+    public string? DiscountAmount { get; set; }
+
+    public string? DiscountKind { get; set; }
+
+    public string? DiscountRate { get; set; }
+
+    public List<SalePaymentRequest>? Payments { get; set; }
+
+    public Guid? CustomerId { get; set; }
+}
+
+public sealed record SaleLineResponse(
+    Guid Id,
+    int LineNumber,
+    Guid ProductId,
+    string ProductSku,
+    string ProductName,
+    string ProductUnit,
+    string Quantity,
+    string ListUnitPrice,
+    string UnitPrice,
+    string LineTotal,
+    bool TracksStock,
+    Guid? StockMovementId,
+    string TaxRate,
+    string PriceKind,
+    string LineDiscount,
+    string AllocatedSaleDiscount,
+    string DiscountKind,
+    string? DiscountRate,
+    bool BelowMinimumOverride);
+
+public sealed class SalePaymentPostRequest
+{
+    public string? Method { get; set; }
+
+    public string? Amount { get; set; }
+
+    public string? Reference { get; set; }
+
+    public string? Notes { get; set; }
+}
+
+public sealed record SalePaymentResponse(
+    Guid Id,
+    string Method,
+    string Amount,
+    DateTimeOffset PaidAt,
+    string? ReceiptNumber,
+    string? Reference,
+    string? Notes,
+    Guid ReceivedBy);
+
+public sealed record SalePaymentPostResponse(
+    Guid SaleId,
+    string SaleNumber,
+    string PaidAmount,
+    string OutstandingAmount,
+    string PaymentState,
+    SalePaymentResponse Payment);
+
+public sealed record SaleResponse(
+    Guid Id,
+    string Number,
+    string Status,
+    string Subtotal,
+    string DiscountAmount,
+    string DiscountKind,
+    string? DiscountRate,
+    string Total,
+    DateTimeOffset CreatedAt,
+    Guid CreatedBy,
+    IReadOnlyList<SaleLineResponse> Lines,
+    IReadOnlyList<SalePaymentResponse> Payments,
+    Guid? CustomerId,
+    string? CustomerName,
+    string? CustomerType,
+    string PaidAmount,
+    string OutstandingAmount,
+    string PaymentState);
+
+public sealed record SaleSummaryResponse(
+    Guid Id,
+    string Number,
+    string Total,
+    DateTimeOffset CreatedAt,
+    Guid? CustomerId,
+    string? CustomerName,
+    string PaidAmount,
+    string OutstandingAmount,
+    string PaymentState);
 
 public sealed record CompanyResponse(
     Guid Id,

@@ -73,7 +73,13 @@ describe("App", () => {
       if (url.endsWith("/api/v1/categories")) {
         return json([]);
       }
-      if (url.includes("/api/v1/stock/") || url.includes("/api/v1/suppliers") || url.includes("/api/v1/purchases")) {
+      if (
+        url.includes("/api/v1/stock/") ||
+        url.includes("/api/v1/suppliers") ||
+        url.includes("/api/v1/purchases") ||
+        url.includes("/api/v1/sales") ||
+        url.includes("/api/v1/customers")
+      ) {
         return json([]);
       }
       throw new Error(url);
@@ -133,7 +139,13 @@ describe("App", () => {
       if (url.endsWith("/api/v1/categories")) {
         return json([]);
       }
-      if (url.includes("/api/v1/stock/") || url.includes("/api/v1/suppliers") || url.includes("/api/v1/purchases")) {
+      if (
+        url.includes("/api/v1/stock/") ||
+        url.includes("/api/v1/suppliers") ||
+        url.includes("/api/v1/purchases") ||
+        url.includes("/api/v1/sales") ||
+        url.includes("/api/v1/customers")
+      ) {
         return json([]);
       }
       throw new Error(url);
@@ -181,7 +193,9 @@ describe("App", () => {
         url.endsWith("/api/v1/products") ||
         url.endsWith("/api/v1/categories") ||
         url.includes("/api/v1/suppliers") ||
-        url.includes("/api/v1/purchases")
+        url.includes("/api/v1/purchases") ||
+        url.includes("/api/v1/sales") ||
+        url.includes("/api/v1/customers")
       ) {
         return json([]);
       }
@@ -246,7 +260,9 @@ describe("App", () => {
         url.endsWith("/api/v1/stock/balances") ||
         url.includes("/api/v1/stock/movements") ||
         url.includes("/api/v1/suppliers") ||
-        url.includes("/api/v1/purchases")
+        url.includes("/api/v1/purchases") ||
+        url.includes("/api/v1/sales") ||
+        url.includes("/api/v1/customers")
       ) {
         return json([]);
       }

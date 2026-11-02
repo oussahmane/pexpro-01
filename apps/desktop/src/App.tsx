@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { CatalogPanel } from "./CatalogPanel";
+import { CustomersPanel } from "./CustomersPanel";
+import { PosPanel } from "./PosPanel";
 import { PurchasingPanel } from "./PurchasingPanel";
 import { StockPanel } from "./StockPanel";
 import { HealthPanel } from "./HealthPanel";
@@ -163,7 +165,7 @@ export default function App({
 
   return (
     <main className="min-h-screen bg-stone-100 text-start text-stone-900">
-      <section className="mx-auto flex max-w-lg flex-col gap-6 px-6 py-10">
+      <section className={`mx-auto flex w-full flex-col gap-6 px-6 py-10 ${screen === "workspace" ? "max-w-6xl" : "max-w-lg"}`}>
         <div className="flex gap-2">
           {locales.map((item) => (
             <button
@@ -238,6 +240,20 @@ export default function App({
             <button type="button" className="w-fit border border-stone-500 bg-white px-3 py-1.5 text-sm" onClick={() => void logout()}>
               {text("action.logout")}
             </button>
+            <PosPanel
+              apiBaseUrl={apiBaseUrl}
+              accessToken={session.accessToken}
+              fetcher={fetcher}
+              locale={locale}
+              administrator={isAdministrator(session.accessToken)}
+            />
+            <CustomersPanel
+              apiBaseUrl={apiBaseUrl}
+              accessToken={session.accessToken}
+              fetcher={fetcher}
+              locale={locale}
+              administrator={isAdministrator(session.accessToken)}
+            />
             <CatalogPanel
               apiBaseUrl={apiBaseUrl}
               accessToken={session.accessToken}
@@ -297,4 +313,18 @@ async function loadCompany(fetcher: Fetcher, apiBaseUrl: string, accessToken: st
 
   const body = (await response.json()) as { legalName?: string };
   return body.legalName ?? null;
+}
+
+function isAdministrator(accessToken: string): boolean {
+  const payload = accessToken.split(".")[1];
+  if (!payload) {
+    return false;
+  }
+
+  try {
+    const claims = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as { role?: string | string[] };
+    return claims.role === "Administrator" || (Array.isArray(claims.role) && claims.role.includes("Administrator"));
+  } catch {
+    return false;
+  }
 }

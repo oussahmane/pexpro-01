@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Pexilio.Api;
 using Pexilio.Api.Endpoints;
 using Pexilio.Api.Health;
 using Pexilio.Infrastructure;
@@ -12,6 +13,10 @@ builder.Logging.AddFilter("Microsoft.AspNetCore.Authentication", LogLevel.Warnin
 builder.Logging.AddFilter("Microsoft.AspNetCore.Authorization", LogLevel.Warning);
 
 builder.Services.AddPexilio(builder.Configuration);
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new OptionalTextConverter());
+});
 builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, ProblemAuthorizationMiddlewareResultHandler>();
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<PexilioDbContext>("database");

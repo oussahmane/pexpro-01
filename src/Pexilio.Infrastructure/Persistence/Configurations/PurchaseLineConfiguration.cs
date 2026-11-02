@@ -19,8 +19,12 @@ public sealed class PurchaseLineConfiguration : IEntityTypeConfiguration<Purchas
                 AND "QuantityReceived" <= "QuantityOrdered"
                 AND "UnitCost" >= 0
                 """);
+            table.HasTrigger("purchase_line_received_matches_receipts");
+            table.HasTrigger("purchase_line_received_starts_at_zero");
         });
         builder.HasKey(line => line.Id);
+        builder.HasAlternateKey(line => new { line.Id, line.PurchaseId, line.ProductId })
+            .HasName("AK_purchase_line_identity");
         builder.Property(line => line.QuantityOrdered).HasColumnType("numeric(19,4)");
         builder.Property(line => line.QuantityReceived).HasColumnType("numeric(19,4)").HasDefaultValue(0m);
         builder.Property(line => line.UnitCost).HasColumnType("numeric(19,4)");

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Pexilio.Infrastructure.Persistence;
@@ -9,11 +10,13 @@ namespace Pexilio.Api.IntegrationTests;
 public sealed class HealthApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _connectionString;
+    private readonly Action<IServiceCollection>? _configureServices;
 
-    public HealthApiFactory(string connectionString)
+    public HealthApiFactory(string connectionString, Action<IServiceCollection>? configureServices = null)
     {
         DatabaseGuard.EnsureTestDatabase(connectionString);
         _connectionString = connectionString;
+        _configureServices = configureServices;
         Environment.SetEnvironmentVariable("PEXILIO_CONNECTION", connectionString);
         Environment.SetEnvironmentVariable("PEXILIO_JWT_SIGNING_KEY", TestDatabase.SigningKey);
     }
@@ -35,5 +38,9 @@ public sealed class HealthApiFactory : WebApplicationFactory<Program>
                 options.UseNpgsql(_connectionString, npgsql =>
                     npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "pexilio")));
         });
+        if (_configureServices is not null)
+        {
+            builder.ConfigureTestServices(_configureServices);
+        }
     }
 }

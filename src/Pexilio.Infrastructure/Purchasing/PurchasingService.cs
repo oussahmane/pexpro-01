@@ -16,7 +16,7 @@ using Pexilio.Infrastructure.Persistence;
 
 namespace Pexilio.Infrastructure.Purchasing;
 
-public sealed class PurchasingService(PexilioDbContext database, TimeProvider time) : IPurchasingService
+public sealed partial class PurchasingService(PexilioDbContext database, TimeProvider time, IStockService stock) : IPurchasingService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -259,7 +259,8 @@ public sealed class PurchasingService(PexilioDbContext database, TimeProvider ti
         }
 
         var prices = await SellingPricesAsync(company.Id, purchase.Lines.Select(line => line.ProductId), cancellationToken);
-        return Result<PurchaseResponse>.Success(ToPurchase(purchase, prices));
+        var receipts = await LoadReceiptsAsync(company.Id, purchase.Id, cancellationToken);
+        return Result<PurchaseResponse>.Success(ToPurchase(purchase, prices, receipts));
     }
 
     public async Task<Result<PurchaseResponse>> CreatePurchaseAsync(
@@ -359,7 +360,7 @@ public sealed class PurchasingService(PexilioDbContext database, TimeProvider ti
         {
             await database.SaveChangesAsync(cancellationToken);
             await database.Entry(purchase).ReloadAsync(cancellationToken);
-            var response = ToPurchase(purchase, SellingPriceMap(lines.Lines));
+            var response = ToPurchase(purchase, SellingPriceMap(lines.Lines), []);
             claim.PurchaseId = purchase.Id;
             claim.ResponseJson = JsonSerializer.Serialize(response, JsonOptions);
             await database.SaveChangesAsync(cancellationToken);
@@ -472,7 +473,7 @@ public sealed class PurchasingService(PexilioDbContext database, TimeProvider ti
 
             await database.SaveChangesAsync(cancellationToken);
             await database.Entry(purchase).ReloadAsync(cancellationToken);
-            var response = ToPurchase(purchase, SellingPriceMap(lines.Lines));
+            var response = ToPurchase(purchase, SellingPriceMap(lines.Lines), []);
             await tx.CommitAsync(cancellationToken);
             return Result<PurchaseResponse>.Success(response);
         }
@@ -772,7 +773,10 @@ public sealed class PurchasingService(PexilioDbContext database, TimeProvider ti
             supplier.Notes,
             supplier.IsActive);
 
-    private static PurchaseResponse ToPurchase(Purchase purchase, IReadOnlyDictionary<Guid, decimal> sellingPrices) =>
+    private static PurchaseResponse ToPurchase(
+        Purchase purchase,
+        IReadOnlyDictionary<Guid, decimal> sellingPrices,
+        IReadOnlyList<PurchaseReceipt> receipts) =>
         new(
             purchase.Id,
             purchase.Number,
@@ -799,7 +803,41 @@ public sealed class PurchasingService(PexilioDbContext database, TimeProvider ti
                     sellingPrices.TryGetValue(line.ProductId, out var price)
                         ? UnitPriceText.Format(price)
                         : QuantityText.Format(0m)))
+                .ToList(),
+            purchase.OrderedAtUtc,
+            purchase.ReceivedAtUtc,
+            purchase.CancelledAtUtc,
+            receipts.Select(ToReceipt).ToList());
+
+    private static PurchaseReceiptResponse ToReceipt(PurchaseReceipt receipt) =>
+        new(
+            receipt.Id,
+            receipt.Number,
+            receipt.DocumentRef,
+            receipt.ReceivedAtUtc,
+            receipt.ReceivedByUserId,
+            receipt.Lines
+                .OrderBy(line => line.Id)
+                .Select(line => new PurchaseReceiptLineResponse(
+                    line.Id,
+                    line.PurchaseLineId,
+                    line.ProductId,
+                    QuantityText.Format(line.Quantity),
+                    QuantityText.Format(line.UnitCost),
+                    line.StockMovementId))
                 .ToList());
+
+    private Task<List<PurchaseReceipt>> LoadReceiptsAsync(
+        Guid companyId,
+        Guid purchaseId,
+        CancellationToken cancellationToken) =>
+        database.PurchaseReceipts
+            .AsNoTracking()
+            .Include(receipt => receipt.Lines)
+            .Where(receipt => receipt.CompanyId == companyId && receipt.PurchaseId == purchaseId)
+            .OrderBy(receipt => receipt.ReceivedAtUtc)
+            .ThenBy(receipt => receipt.Number)
+            .ToListAsync(cancellationToken);
 
     private static string SupplierCanonical(SupplierDraft draft) =>
         string.Join(
@@ -847,6 +885,11 @@ public sealed class PurchasingService(PexilioDbContext database, TimeProvider ti
     private static OperationFailure UniqueFailure(Exception exception)
     {
         var name = FindPostgres(exception)?.ConstraintName ?? "";
+        if (name.Contains("receipt_purchase_document", StringComparison.OrdinalIgnoreCase))
+        {
+            return OperationFailure.Of(409, ErrorCodes.PurchaseReceiptDocumentTaken);
+        }
+
         if (name.Contains("supplier_document", StringComparison.OrdinalIgnoreCase))
         {
             return OperationFailure.Of(409, ErrorCodes.PurchaseSupplierDocumentTaken);

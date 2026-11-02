@@ -23,6 +23,8 @@ public sealed class PurchaseConfiguration : IEntityTypeConfiguration<Purchase>
                 """);
         });
         builder.HasKey(purchase => purchase.Id);
+        builder.HasAlternateKey(purchase => new { purchase.Id, purchase.CompanyId })
+            .HasName("AK_purchase_id_company");
         builder.Property(purchase => purchase.Number).HasMaxLength(PurchasingValidator.NumberMaxLength).IsRequired();
         builder.Property(purchase => purchase.Status).HasMaxLength(32).IsRequired();
         builder.Property(purchase => purchase.SupplierName).HasMaxLength(PurchasingValidator.SupplierNameMaxLength).IsRequired();

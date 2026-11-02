@@ -23,6 +23,13 @@ public readonly record struct PurchaseDraftInput(
     string? Notes,
     IReadOnlyList<DraftLine> Lines);
 
+public readonly record struct ReceiptLineInput(Guid PurchaseLineId, decimal Quantity);
+
+public readonly record struct ReceiptInput(
+    string DocumentRef,
+    string DocumentKey,
+    IReadOnlyList<ReceiptLineInput> Lines);
+
 public static partial class PurchasingValidator
 {
     public const int SupplierNameMaxLength = 160;
@@ -156,6 +163,68 @@ public static partial class PurchasingValidator
         return true;
     }
 
+    public static bool TryReceipt(
+        string? documentRef,
+        IReadOnlyList<(Guid PurchaseLineId, string? Quantity)>? lines,
+        out ReceiptInput receipt,
+        out IReadOnlyList<FieldError> errors)
+    {
+        var found = new List<FieldError>();
+        var document = RequiredDocumentRef(documentRef, found);
+        var parsed = new List<ReceiptLineInput>();
+        var seen = new HashSet<Guid>();
+        var source = lines ?? [];
+        for (var index = 0; index < source.Count; index++)
+        {
+            var (lineId, quantityText) = source[index];
+            if (string.IsNullOrWhiteSpace(quantityText))
+            {
+                continue;
+            }
+
+            var prefix = $"lines[{index}]";
+            var knownLine = lineId != Guid.Empty;
+            if (!knownLine)
+            {
+                found.Add(new FieldError($"{prefix}.purchaseLineId", "lines.unknown"));
+            }
+            else if (!seen.Add(lineId))
+            {
+                found.Add(new FieldError($"{prefix}.purchaseLineId", "lines.duplicate"));
+            }
+
+            if (!QuantityText.TryParse(quantityText, "quantity", false, out var quantity, out var quantityCode)
+                || quantity <= 0m)
+            {
+                found.Add(new FieldError(
+                    $"{prefix}.quantity",
+                    quantity <= 0m && quantityCode.Length == 0 ? "quantity.positive" : quantityCode));
+                continue;
+            }
+
+            if (knownLine && !found.Exists(error => error.Field == $"{prefix}.purchaseLineId"))
+            {
+                parsed.Add(new ReceiptLineInput(lineId, quantity));
+            }
+        }
+
+        if (parsed.Count == 0 && found.Count == 0)
+        {
+            found.Add(new FieldError("lines", "lines.required"));
+        }
+
+        if (found.Count > 0 || document.Failed)
+        {
+            receipt = default;
+            errors = found;
+            return false;
+        }
+
+        receipt = new ReceiptInput(document.Reference!, document.Key!, parsed);
+        errors = found;
+        return true;
+    }
+
     private static readonly char[] Ligatures = ['\uFB00', '\uFB01', '\uFB02', '\uFB03', '\uFB04', '\uFB05', '\uFB06'];
 
     public static string Key(string value)
@@ -218,6 +287,30 @@ public static partial class PurchasingValidator
         if (!DocumentRefPattern().IsMatch(trimmed))
         {
             errors.Add(new FieldError("supplierDocumentRef", "supplierDocumentRef.invalid"));
+            return (true, null, null);
+        }
+
+        return (false, trimmed, Key(trimmed));
+    }
+
+    private static (bool Failed, string? Reference, string? Key) RequiredDocumentRef(string? value, List<FieldError> errors)
+    {
+        var trimmed = value?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            errors.Add(new FieldError("receiptDocumentRef", "receiptDocumentRef.required"));
+            return (true, null, null);
+        }
+
+        if (ExceedsStoredLength(trimmed, DocumentRefMaxLength))
+        {
+            errors.Add(new FieldError("receiptDocumentRef", "receiptDocumentRef.length"));
+            return (true, null, null);
+        }
+
+        if (!DocumentRefPattern().IsMatch(trimmed))
+        {
+            errors.Add(new FieldError("receiptDocumentRef", "receiptDocumentRef.invalid"));
             return (true, null, null);
         }
 

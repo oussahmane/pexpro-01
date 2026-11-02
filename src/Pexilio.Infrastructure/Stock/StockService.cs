@@ -256,49 +256,24 @@ public sealed class StockService(PexilioDbContext database, TimeProvider time) :
             return PostAttempt.Replay(company.Id);
         }
 
-        var location = await EnsureDefaultLocationAsync(company.Id, cancellationToken);
-        await LockProductAsync(location.Id, product.Id, cancellationToken);
-        var balance = await EnsureBalanceAsync(location.Id, product.Id, cancellationToken);
-
-        if (movementType == StockMovementTypes.Opening)
-        {
-            var exists = await database.StockMovements.AnyAsync(
-                movement => movement.StockLocationId == location.Id && movement.ProductId == product.Id,
-                cancellationToken);
-            if (exists)
-            {
-                database.ChangeTracker.Clear();
-                await tx.RollbackAsync(cancellationToken);
-                return PostAttempt.Failed(OperationFailure.Of(409, ErrorCodes.StockOpeningExists));
-            }
-        }
-
-        var available = balance.Quantity;
-        var next = available + quantity;
-        if (location.PreventNegativeStock && next < 0m)
+        var posted = await PostInCurrentTransactionAsync(
+            movementType,
+            product.Id,
+            quantity,
+            reason,
+            unitCost,
+            userId,
+            StockSourceTypes.Manual,
+            null,
+            cancellationToken);
+        if (posted.Error is not null)
         {
             database.ChangeTracker.Clear();
             await tx.RollbackAsync(cancellationToken);
-            return PostAttempt.Failed(Insufficient(available, quantity));
+            return PostAttempt.Failed(posted.Error);
         }
 
-        balance.Quantity = next;
-        var movement = new StockMovement
-        {
-            Id = Guid.NewGuid(),
-            CompanyId = company.Id,
-            StockLocationId = location.Id,
-            ProductId = product.Id,
-            MovementType = movementType,
-            QuantityDelta = quantity,
-            Reason = reason,
-            BalanceAfter = next,
-            UnitCost = unitCost,
-            SourceType = StockMovementTypes.Manual,
-            OccurredAtUtc = time.GetUtcNow(),
-            CreatedByUserId = userId,
-        };
-        database.StockMovements.Add(movement);
+        var movement = posted.Value!;
         var response = ToMovement(movement);
         var claim = database.ChangeTracker.Entries<StockIdempotency>().Single().Entity;
         claim.MovementId = movement.Id;
@@ -320,12 +295,131 @@ public sealed class StockService(PexilioDbContext database, TimeProvider time) :
 
             if (Mentions(exception, ErrorCodes.StockInsufficient))
             {
-                return PostAttempt.Failed(Insufficient(available, quantity));
+                return PostAttempt.Failed(Insufficient(movement.BalanceAfter - quantity, quantity));
             }
 
             if (Mentions(exception, ErrorCodes.StockReconciliation))
             {
                 return PostAttempt.Failed(OperationFailure.Of(409, ErrorCodes.StockReconciliation));
+            }
+
+            throw;
+        }
+    }
+
+    public async Task<Result<StockMovement>> PostInCurrentTransactionAsync(
+        string movementType,
+        Guid productId,
+        decimal quantity,
+        string reason,
+        decimal? unitCost,
+        Guid userId,
+        string sourceType,
+        Guid? sourceId,
+        CancellationToken cancellationToken,
+        Guid? movementId = null)
+    {
+        if (database.Database.CurrentTransaction is null)
+        {
+            throw new InvalidOperationException("PostInCurrentTransactionAsync requires the caller's active transaction.");
+        }
+
+        if (movementId == Guid.Empty)
+        {
+            throw new InvalidOperationException("The stock movement id is empty.");
+        }
+
+        var requiresSource = sourceType is StockSourceTypes.Purchase or StockSourceTypes.Sale or StockSourceTypes.SaleReturn;
+        if (!StockSourceTypes.IsKnown(sourceType)
+            || (requiresSource && sourceId is null)
+            || (sourceType == StockSourceTypes.Manual && sourceId is not null))
+        {
+            throw new InvalidOperationException("The stock source does not match the ledger rules.");
+        }
+
+        if (!StockRules.TryReason(reason, out var normalizedReason, out var reasonCode))
+        {
+            return Result<StockMovement>.Fail(OperationFailure.Validation([new FieldError("reason", reasonCode)]));
+        }
+
+        if (!StockRules.TryDelta(movementType, quantity, out var quantityCode))
+        {
+            return Result<StockMovement>.Fail(OperationFailure.Validation([new FieldError("quantity", quantityCode)]));
+        }
+
+        var company = await database.Companies.SingleOrDefaultAsync(cancellationToken);
+        if (company is null)
+        {
+            return Result<StockMovement>.Fail(OperationFailure.Of(404, ErrorCodes.CompanyMissing));
+        }
+
+        var product = await database.Products.SingleOrDefaultAsync(
+            item => item.Id == productId && item.CompanyId == company.Id,
+            cancellationToken);
+        if (product is null)
+        {
+            return Result<StockMovement>.Fail(OperationFailure.Of(404, ErrorCodes.ProductNotFound));
+        }
+
+        if (!product.TrackStock)
+        {
+            return Result<StockMovement>.Fail(OperationFailure.Of(409, ErrorCodes.StockNotTracked));
+        }
+
+        var location = await EnsureDefaultLocationAsync(company.Id, cancellationToken);
+        await LockProductAsync(location.Id, product.Id, cancellationToken);
+        var balance = await EnsureBalanceAsync(location.Id, product.Id, cancellationToken);
+        if (movementType == StockMovementTypes.Opening)
+        {
+            var exists = await database.StockMovements.AnyAsync(
+                movement => movement.StockLocationId == location.Id && movement.ProductId == product.Id,
+                cancellationToken);
+            if (exists)
+            {
+                return Result<StockMovement>.Fail(OperationFailure.Of(409, ErrorCodes.StockOpeningExists));
+            }
+        }
+
+        var available = balance.Quantity;
+        var next = StockRules.NextBalance(available, quantity);
+        if (location.PreventNegativeStock && next < 0m)
+        {
+            return Result<StockMovement>.Fail(Insufficient(available, quantity));
+        }
+
+        balance.Quantity = next;
+        var posted = new StockMovement
+        {
+            Id = movementId ?? Guid.NewGuid(),
+            CompanyId = company.Id,
+            StockLocationId = location.Id,
+            ProductId = product.Id,
+            MovementType = movementType,
+            QuantityDelta = quantity,
+            Reason = normalizedReason,
+            BalanceAfter = next,
+            UnitCost = unitCost,
+            SourceType = sourceType,
+            SourceId = sourceId,
+            OccurredAtUtc = time.GetUtcNow(),
+            CreatedByUserId = userId,
+        };
+        database.StockMovements.Add(posted);
+        try
+        {
+            await database.SaveChangesAsync(cancellationToken);
+            return Result<StockMovement>.Success(posted);
+        }
+        catch (Exception exception) when (exception is DbUpdateException or PostgresException)
+        {
+            if (Mentions(exception, ErrorCodes.StockInsufficient))
+            {
+                return Result<StockMovement>.Fail(Insufficient(available, quantity));
+            }
+
+            if (Mentions(exception, ErrorCodes.StockReconciliation))
+            {
+                return Result<StockMovement>.Fail(OperationFailure.Of(409, ErrorCodes.StockReconciliation));
             }
 
             throw;

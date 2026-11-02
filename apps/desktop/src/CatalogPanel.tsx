@@ -9,6 +9,10 @@ type ProductRow = {
   name: string;
   unit: string;
   unitPrice: string;
+  wholesaleUnitPrice?: string | null;
+  minimumUnitPrice?: string | null;
+  trackStock?: boolean;
+  isActive?: boolean;
 };
 
 type CategoryRow = {
@@ -33,6 +37,9 @@ export function CatalogPanel({ apiBaseUrl, accessToken, fetcher, locale }: Catal
   const [name, setName] = useState("");
   const [unit, setUnit] = useState("u");
   const [unitPrice, setUnitPrice] = useState("");
+  const [wholesalePrice, setWholesalePrice] = useState("");
+  const [minimumPrice, setMinimumPrice] = useState("");
+  const [editing, setEditing] = useState<ProductRow | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
 
   useEffect(() => {
@@ -62,13 +69,22 @@ export function CatalogPanel({ apiBaseUrl, accessToken, fetcher, locale }: Catal
   async function submit(event: FormEvent) {
     event.preventDefault();
     setErrorCode(null);
-    const response = await fetcher(`${apiBaseUrl}/api/v1/products`, {
-      method: "POST",
+    const response = await fetcher(editing ? `${apiBaseUrl}/api/v1/products/${editing.id}` : `${apiBaseUrl}/api/v1/products`, {
+      method: editing ? "PATCH" : "POST",
       headers: {
         authorization: `Bearer ${accessToken}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ sku, name, unit, unitPrice, trackStock: true, isActive: true }),
+      body: JSON.stringify({
+        sku,
+        name,
+        unit,
+        unitPrice,
+        wholesaleUnitPrice: wholesalePrice.trim() === "" ? null : wholesalePrice,
+        minimumUnitPrice: minimumPrice.trim() === "" ? null : minimumPrice,
+        trackStock: editing?.trackStock ?? true,
+        isActive: editing?.isActive ?? true,
+      }),
     });
     if (!response.ok) {
       const problem = (await response.json()) as { code?: string; errors?: Record<string, string[]> };
@@ -77,11 +93,27 @@ export function CatalogPanel({ apiBaseUrl, accessToken, fetcher, locale }: Catal
       return;
     }
 
-    const created = (await response.json()) as ProductRow;
-    setProducts((current) => [...current, created].sort((left, right) => left.name.localeCompare(right.name)));
+    const saved = (await response.json()) as ProductRow;
+    setProducts((current) =>
+      [...current.filter((product) => product.id !== saved.id), saved].sort((left, right) => left.name.localeCompare(right.name)),
+    );
+    setEditing(null);
     setSku("");
     setName("");
     setUnitPrice("");
+    setWholesalePrice("");
+    setMinimumPrice("");
+  }
+
+  function editProduct(product: ProductRow) {
+    setEditing(product);
+    setSku(product.sku);
+    setName(product.name);
+    setUnit(product.unit);
+    setUnitPrice(product.unitPrice);
+    setWholesalePrice(product.wholesaleUnitPrice ?? "");
+    setMinimumPrice(product.minimumUnitPrice ?? "");
+    setErrorCode(null);
   }
 
   async function submitCategory(event: FormEvent) {
@@ -128,8 +160,13 @@ export function CatalogPanel({ apiBaseUrl, accessToken, fetcher, locale }: Catal
       {products.length === 0 ? <p>{text("catalog.empty")}</p> : null}
       <ul className="flex flex-col gap-1">
         {products.map((product) => (
-          <li key={product.id}>
-            {product.sku} · {product.name} · {product.unitPrice}
+          <li key={product.id} className="flex flex-wrap items-center gap-2">
+            <span>
+              {`${product.sku} · ${product.name} · ${product.unitPrice}${product.wholesaleUnitPrice ? ` · ${product.wholesaleUnitPrice}` : ""}${product.minimumUnitPrice ? ` · ${product.minimumUnitPrice}` : ""}`}
+            </span>
+            <button type="button" className="min-h-12 border border-stone-500 bg-white px-3" onClick={() => editProduct(product)}>
+              {text("catalog.edit")} {product.name}
+            </button>
           </li>
         ))}
       </ul>
@@ -150,9 +187,17 @@ export function CatalogPanel({ apiBaseUrl, accessToken, fetcher, locale }: Catal
           <span>{text("catalog.price")}</span>
           <input className="w-full border border-stone-400 px-2 py-1" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} />
         </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span>{text("catalog.wholesale")}</span>
+          <input className="w-full border border-stone-400 px-2 py-1" value={wholesalePrice} onChange={(event) => setWholesalePrice(event.target.value)} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span>{text("catalog.minimum")}</span>
+          <input className="w-full border border-stone-400 px-2 py-1" value={minimumPrice} onChange={(event) => setMinimumPrice(event.target.value)} />
+        </label>
         {errorCode ? <p role="alert">{text(errorCode)}</p> : null}
         <button type="submit" className="w-fit border border-stone-500 bg-white px-3 py-1.5 text-sm">
-          {text("catalog.add")}
+          {editing ? text("catalog.save") : text("catalog.add")}
         </button>
       </form>
     </section>

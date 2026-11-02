@@ -20,6 +20,10 @@ public sealed class Product
 
     public decimal UnitPrice { get; set; }
 
+    public decimal? WholesaleUnitPrice { get; set; }
+
+    public decimal? MinimumUnitPrice { get; set; }
+
     public bool TrackStock { get; set; } = true;
 
     public bool IsActive { get; set; } = true;

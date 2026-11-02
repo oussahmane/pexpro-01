@@ -9,7 +9,9 @@ using Pexilio.Application;
 using Pexilio.Domain.Accounts;
 using Pexilio.Infrastructure.Accounts;
 using Pexilio.Infrastructure.Catalog;
+using Pexilio.Infrastructure.Customers;
 using Pexilio.Infrastructure.Purchasing;
+using Pexilio.Infrastructure.Sales;
 using Pexilio.Infrastructure.Stock;
 using Pexilio.Infrastructure.Auth;
 using Pexilio.Infrastructure.Identity;
@@ -73,6 +75,9 @@ public static class DependencyInjection
         services.AddScoped<ICatalogService, CatalogService>();
         services.AddScoped<IStockService, StockService>();
         services.AddScoped<IPurchasingService, PurchasingService>();
+        services.AddScoped<ICustomerService, CustomerService>();
+        services.AddScoped<ISalesService, SalesService>();
+        services.AddSingleton<ISaleProductLock, ImmediateSaleProductLock>();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
@@ -102,6 +107,10 @@ public static class DependencyInjection
             options.AddPolicy("stock.adjust", policy => policy.RequireRole(RoleNames.Administrator));
             options.AddPolicy("purchases.read", policy => policy.RequireRole(RoleNames.Administrator, RoleNames.Cashier));
             options.AddPolicy("purchases.write", policy => policy.RequireRole(RoleNames.Administrator));
+            options.AddPolicy("sales.read", policy => policy.RequireRole(RoleNames.Administrator, RoleNames.Cashier));
+            options.AddPolicy("sales.write", policy => policy.RequireRole(RoleNames.Administrator, RoleNames.Cashier));
+            options.AddPolicy("customers.read", policy => policy.RequireRole(RoleNames.Administrator, RoleNames.Cashier));
+            options.AddPolicy("customers.write", policy => policy.RequireRole(RoleNames.Administrator, RoleNames.Cashier));
         });
 
         return services;
